@@ -1,0 +1,1252 @@
+<title>Mundo da Analua</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;700&family=Nunito:wght@600;800&display=swap">
+<style>
+  /* Layout: tela cheia com o canvas 3D atrás e um HUD leve por cima (joystick, pulo, contador). Mundo único, visual fixo de "sol de festa", sem tema escuro por escolha. */
+  :root{
+    --sky:#8ED6FF;
+    --ink:#1F2A44;
+    --paper:#FFFFFF;
+    --pink:#FF4FA3;
+    --yellow:#FFD23F;
+    --mint:#3DDC97;
+    --font-display:'Fredoka','Nunito',system-ui,sans-serif;
+    --font-body:'Nunito','Fredoka',system-ui,sans-serif;
+    color-scheme: light;
+  }
+  html,body{height:100%;margin:0;overflow:hidden}
+  body{background:var(--sky);color:var(--ink);font-family:var(--font-body);
+    padding-left:max(0px, env(safe-area-inset-left,0px));padding-right:max(0px, env(safe-area-inset-right,0px));padding-block:0}
+  #game{position:fixed;inset:0;touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:none}
+  canvas#c{display:block;width:100%;height:100%;touch-action:none}
+
+  .pill{position:absolute;top:calc(env(safe-area-inset-top,0px) + 12px);background:rgba(255,255,255,.92);color:var(--ink);
+    font-family:var(--font-display);font-weight:700;font-size:16px;line-height:1;padding:10px 14px;border-radius:999px;
+    box-shadow:0 4px 0 rgba(31,42,68,.18);pointer-events:none;white-space:nowrap}
+  #banner{left:max(16px, env(safe-area-inset-left,0px))}
+  #stars{right:max(16px, env(safe-area-inset-right,0px));font-variant-numeric:tabular-nums}
+
+  #mute{position:absolute;top:calc(env(safe-area-inset-top,0px) + 60px);right:max(16px, env(safe-area-inset-right,0px));
+    width:42px;height:42px;border-radius:50%;border:0;background:rgba(255,255,255,.92);font-size:20px;line-height:1;
+    box-shadow:0 4px 0 rgba(31,42,68,.18);cursor:pointer;touch-action:none}
+  #mute:focus-visible{outline:3px solid var(--ink);outline-offset:3px}
+  #toast{position:absolute;left:50%;top:calc(env(safe-area-inset-top,0px) + 64px);transform:translateX(-50%) translateY(-8px);
+    background:var(--ink);color:#fff;font-family:var(--font-display);font-weight:700;font-size:15px;padding:8px 14px;border-radius:12px;
+    opacity:0;transition:opacity .25s,transform .25s;pointer-events:none;max-width:calc(100% - 32px);text-align:center}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+  #joy{position:absolute;left:calc(max(16px, env(safe-area-inset-left,0px)) + 10px);bottom:calc(env(safe-area-inset-bottom,0px) + 26px);
+    width:130px;height:130px;border-radius:50%;background:rgba(255,255,255,.28);border:3px solid rgba(255,255,255,.7);
+    touch-action:none;display:none}
+  #knob{position:absolute;left:50%;top:50%;width:58px;height:58px;margin:-29px 0 0 -29px;border-radius:50%;
+    background:var(--pink);box-shadow:0 5px 0 rgba(31,42,68,.3);pointer-events:none}
+  #jump{position:absolute;right:calc(max(16px, env(safe-area-inset-right,0px)) + 16px);bottom:calc(env(safe-area-inset-bottom,0px) + 40px);
+    width:92px;height:92px;border-radius:50%;border:0;background:var(--yellow);color:var(--ink);font-family:var(--font-display);
+    font-weight:700;font-size:18px;box-shadow:0 7px 0 #D9A800;touch-action:none;display:none;cursor:pointer}
+  #jump:active{transform:translateY(5px);box-shadow:0 2px 0 #D9A800}
+  #game.touch #joy,#game.touch #jump{display:block}
+  @media (hover:none) and (pointer:coarse){ #joy,#jump{display:block} }
+
+  .overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    background:rgba(31,42,68,.45);backdrop-filter:blur(3px);padding:max(16px, env(safe-area-inset-left,0px))}
+  .overlay[hidden]{display:none !important}
+  .card{background:var(--paper);border-radius:28px;padding:28px 26px;max-width:420px;width:100%;text-align:center;
+    box-shadow:0 12px 0 rgba(31,42,68,.25);border:4px solid var(--ink)}
+  .card .eyebrow{font-family:var(--font-display);font-weight:700;letter-spacing:.08em;text-transform:uppercase;font-size:13px;color:var(--pink)}
+  .card h1{font-family:var(--font-display);font-weight:700;font-size:38px;line-height:1.05;margin:8px 0 6px;text-wrap:balance}
+  .card p{margin:0;font-weight:600;line-height:1.45;font-size:15px}
+  .card .controls{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:18px 0;text-align:left}
+  .card .controls div{background:#F3F6FF;border-radius:14px;padding:10px 12px;font-size:13px;line-height:1.35;min-width:0}
+  .card .controls b{display:block;font-family:var(--font-display);font-size:14px;color:var(--ink)}
+  .btn{font-family:var(--font-display);font-weight:700;font-size:20px;border:0;border-radius:16px;padding:14px 26px;
+    background:var(--mint);color:var(--ink);box-shadow:0 6px 0 #1FA86E;cursor:pointer;width:100%}
+  .btn:active{transform:translateY(4px);box-shadow:0 2px 0 #1FA86E}
+  .btn:focus-visible,#jump:focus-visible{outline:3px solid var(--ink);outline-offset:3px}
+  .card .tiny{margin-top:14px;font-size:12px;color:#7B86A3;font-weight:600}
+  @media (prefers-reduced-motion:reduce){ #toast{transition:none} }
+</style>
+
+<div id="game">
+  <canvas id="c"></canvas>
+  <div id="banner" class="pill">🎂 Analua, 10 anos</div>
+  <div id="stars" class="pill">⭐ 0/10</div>
+  <button id="mute" type="button" aria-label="Som" aria-pressed="false">🔊</button>
+  <div id="toast"></div>
+  <div id="joy"><div id="knob"></div></div>
+  <button id="jump" type="button" aria-label="Pular">PULAR</button>
+
+  <div id="start" class="overlay">
+    <div class="card">
+      <div class="eyebrow">Um mundo só seu</div>
+      <h1>Feliz aniversário, Analua!</h1>
+      <p>Explore a praia, pule nos presentes e encontre as 10 estrelas escondidas, uma para cada ano. Elas destrancam a surpresa do letreiro. E tem recados escondidos pelo mapa, fique de olho.</p>
+      <div class="controls">
+        <div><b>No computador</b>WASD ou setas para andar<br>Espaço para pular<br>Arraste o mouse para girar a câmera</div>
+        <div><b>No celular</b>Joystick para andar<br>Botão amarelo para pular<br>Arraste na tela para girar</div>
+      </div>
+      <button class="btn" id="play" type="button">Entrar no mundo</button>
+      <div class="tiny">🔊 Fica melhor com o som ligado</div>
+    </div>
+  </div>
+
+  <div id="win" class="overlay" hidden>
+    <div class="card">
+      <div class="eyebrow">Você achou todas!</div>
+      <h1>10 estrelas, 10 anos 🎉</h1>
+      <p>O letreiro está revelado e os fogos são todos seus. Ravi, Apolo e Joca chegaram para brincar e vão te seguir pela praia. Que esse novo ano seja cheio de aventura, risada e muita coisa boa.</p>
+      <div style="height:16px"></div>
+      <button class="btn" id="keep" type="button">Continuar explorando</button>
+      <div class="tiny" id="winFoot"></div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/GammaCorrectionShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/FXAAShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+<script>
+/* =====================================================================
+   CONFIGURAÇÃO — troque as imagens aqui
+   ---------------------------------------------------------------------
+   rostoImg: foto do rosto, de preferência quadrada (ex: 512x512).
+   FOTO_CENARIO_1..4: fotos dos quadros espalhados pelo mapa (4:3 fica ideal).
+   Pode ser uma URL (https://...) ou uma imagem em base64 (data:image/jpeg;base64,...).
+   Enquanto o placeholder não for trocado, o jogo usa uma carinha Roblox e
+   quadros coloridos de exemplo.
+   ===================================================================== */
+const rostoImg        = 'COLOQUE_URL_DO_ROSTO_AQUI.jpg';
+const FOTO_CENARIO_1  = 'FOTO_CENARIO_1.jpg';
+const FOTO_CENARIO_2  = 'FOTO_CENARIO_2.jpg';
+const FOTO_CENARIO_3  = 'FOTO_CENARIO_3.jpg';
+const FOTO_CENARIO_4  = 'FOTO_CENARIO_4.jpg';
+
+const NOME     = 'Analua';
+const IDADE    = 10;
+const MENSAGEM = ['Feliz aniversário', 'Analua', 'pelos seus 10 anos'];   // texto exato do letreiro, em 3 linhas
+const RECADO   = 'Tio Cauê te ama';                                        // fica atrás do letreiro e na tela final
+const TOTAL_ESTRELAS = IDADE;
+
+/* ===================== utilidades de textura ===================== */
+const isPlaceholder = u => !u || /COLOQUE_URL|^FOTO_CENARIO_\d/i.test(u);
+function canvasTex(w, h, draw){
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  draw(c.getContext('2d'), w, h);
+  const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; t.anisotropy = 4;
+  return t;
+}
+function tryLoad(url, mat){
+  if (isPlaceholder(url)) return;
+  const L = new THREE.TextureLoader(); L.setCrossOrigin('anonymous');
+  L.load(url, t => { t.encoding = THREE.sRGBEncoding; mat.map = t; mat.color.set(0xffffff); mat.needsUpdate = true; }, undefined, () => {});
+}
+function roundRect(ctx, x, y, w, h, r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+
+// rosto clássico (usado até a foto ser trocada)
+function faceFallback(){
+  return canvasTex(256, 256, (ctx) => {
+    ctx.fillStyle = '#F7D23E'; ctx.fillRect(0,0,256,256);
+    ctx.fillStyle = '#222';
+    ctx.beginPath(); ctx.ellipse(88, 100, 14, 24, 0, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(168, 100, 14, 24, 0, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = '#222'; ctx.lineWidth = 11; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.arc(128, 128, 56, Math.PI*0.18, Math.PI*0.82); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,120,160,.55)';
+    ctx.beginPath(); ctx.arc(58, 150, 16, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(198, 150, 16, 0, Math.PI*2); ctx.fill();
+  });
+}
+// quadro de exemplo
+function photoFallback(i){
+  const pal = [['#FF4FA3','#FFD23F'],['#3DDC97','#2EC4FF'],['#A66CFF','#FF8A5C'],['#FFD23F','#FF4FA3']][i % 4];
+  const emo = ['🎈','🎂','🎁','🌟'][i % 4];
+  return canvasTex(640, 480, (ctx, w, h) => {
+    const g = ctx.createLinearGradient(0,0,w,h); g.addColorStop(0,pal[0]); g.addColorStop(1,pal[1]);
+    ctx.fillStyle = g; ctx.fillRect(0,0,w,h);
+    ctx.fillStyle = 'rgba(255,255,255,.18)';
+    for (let x = -h; x < w + h; x += 80){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x+40,0); ctx.lineTo(x+40-h,h); ctx.lineTo(x-h,h); ctx.closePath(); ctx.fill(); }
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = '150px serif'; ctx.fillText(emo, w/2, h/2 - 30);
+    ctx.font = '700 44px Fredoka, Nunito, sans-serif'; ctx.fillStyle = '#fff';
+    ctx.strokeStyle = 'rgba(31,42,68,.5)'; ctx.lineWidth = 8; ctx.lineJoin = 'round';
+    ctx.strokeText('FOTO ' + (i+1), w/2, h - 70); ctx.fillText('FOTO ' + (i+1), w/2, h - 70);
+  });
+}
+// frente do letreiro
+function signFront(){
+  return canvasTex(1600, 560, (ctx, w, h) => {
+    const g = ctx.createLinearGradient(0,0,w,h); g.addColorStop(0,'#FF4FA3'); g.addColorStop(1,'#FF8A5C');
+    ctx.fillStyle = g; ctx.fillRect(0,0,w,h);
+    ctx.fillStyle = 'rgba(255,255,255,.14)';
+    for (let i = 0; i < 40; i++){ ctx.beginPath(); ctx.arc((i*173)%w, (i*97)%h, 18 + (i%5)*9, 0, Math.PI*2); ctx.fill(); }
+    ctx.fillStyle = '#fff'; roundRect(ctx, 34, 34, w-68, h-68, 36); ctx.fill();
+    ctx.strokeStyle = '#1F2A44'; ctx.lineWidth = 12; roundRect(ctx, 34, 34, w-68, h-68, 36); ctx.stroke();
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
+    const lines = [[MENSAGEM[0], 118, '#1F2A44'], [MENSAGEM[1], 190, '#FF4FA3'], [MENSAGEM[2], 118, '#1F2A44']];
+    const ys = [150, 300, 440];
+    lines.forEach(([txt, size, col], i) => {
+      ctx.font = '700 ' + size + 'px Fredoka, Nunito, sans-serif';
+      ctx.fillStyle = col; ctx.fillText(txt, w/2, ys[i]);
+    });
+  });
+}
+// capa que esconde o letreiro até as 10 estrelas serem encontradas
+function signCoverTex(){
+  return canvasTex(1600, 600, (ctx, w, h) => {
+    ctx.fillStyle = '#1F2A44'; ctx.fillRect(0,0,w,h);
+    ctx.fillStyle = 'rgba(255,255,255,.07)';
+    for (let y = 0; y < h; y += 60) for (let x = (y/60)%2 ? 60 : 0; x < w; x += 120) ctx.fillRect(x, y, 60, 60);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = '700 260px Fredoka, Nunito, sans-serif'; ctx.fillStyle = 'rgba(255,210,63,.22)';
+    for (let i = 0; i < 7; i++) ctx.fillText('?', 130 + i*225, h/2 + ((i%2) ? 70 : -70));
+    ctx.font = '700 92px Fredoka, Nunito, sans-serif'; ctx.fillStyle = '#FFD23F';
+    ctx.fillText('SURPRESA TRANCADA', w/2, h/2 - 60);
+    ctx.font = '700 58px Fredoka, Nunito, sans-serif'; ctx.fillStyle = '#ffffff';
+    ctx.fillText('Encontre as ' + TOTAL_ESTRELAS + ' estrelas para revelar', w/2, h/2 + 60);
+  });
+}
+// verso do letreiro: madeira com o recado, pequeno
+function signBack(){
+  return canvasTex(1600, 560, (ctx, w, h) => {
+    ctx.fillStyle = '#B07A45'; ctx.fillRect(0,0,w,h);
+    ctx.strokeStyle = 'rgba(0,0,0,.12)'; ctx.lineWidth = 3;
+    for (let y = 60; y < h; y += 70){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke(); }
+    ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
+    ctx.font = '600 34px Nunito, sans-serif'; ctx.fillStyle = 'rgba(255,241,220,.85)';
+    ctx.fillText(RECADO + ' ♥', w - 50, h - 36);
+  });
+}
+// areia clara de Itacoatiara, com a grade sutil do estilo baseplate
+function groundTex(){
+  const t = canvasTex(256, 256, (ctx) => {
+    ctx.fillStyle = '#F1DDA8'; ctx.fillRect(0,0,256,256);
+    for (let i = 0; i < 260; i++){ ctx.fillStyle = i%2 ? 'rgba(255,255,255,.35)' : 'rgba(170,130,70,.18)'; ctx.fillRect((i*97)%256, (i*53)%256, 3, 3); }
+    ctx.strokeStyle = 'rgba(160,120,60,.16)'; ctx.lineWidth = 5; ctx.strokeRect(2.5,2.5,251,251);
+  });
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(35, 35);
+  return t;
+}
+function seaTex(){
+  const t = canvasTex(256, 256, (ctx) => {
+    ctx.fillStyle = '#1E9FC4'; ctx.fillRect(0,0,256,256);
+    ctx.strokeStyle = 'rgba(255,255,255,.22)'; ctx.lineWidth = 5; ctx.lineCap = 'round';
+    for (let r = 0; r < 6; r++){
+      ctx.beginPath();
+      for (let x = 0; x <= 256; x += 8){ const y = 20 + r*42 + Math.sin((x/256)*Math.PI*4 + r)*7; x ? ctx.lineTo(x,y) : ctx.moveTo(x,y); }
+      ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(10,80,120,.18)';
+    for (let i = 0; i < 40; i++) ctx.fillRect((i*71)%256, (i*37)%256, 22, 4);
+  });
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(40, 40);
+  return t;
+}
+function umbrellaTex(){
+  const t = canvasTex(256, 64, (ctx) => {
+    for (let i = 0; i < 8; i++){ ctx.fillStyle = i%2 ? '#FFFFFF' : '#E8362E'; ctx.fillRect(i*32, 0, 32, 64); }
+  });
+  t.wrapS = THREE.RepeatWrapping; t.repeat.set(2, 1);
+  return t;
+}
+function signpostTex(txt, bg){
+  return canvasTex(512, 128, (ctx, w, h) => {
+    ctx.fillStyle = bg; ctx.fillRect(0,0,w,h);
+    ctx.strokeStyle = 'rgba(0,0,0,.18)'; ctx.lineWidth = 3;
+    for (let y = 20; y < h; y += 28){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke(); }
+    ctx.font = '700 58px Fredoka, Nunito, sans-serif'; ctx.fillStyle = '#FFF6E0'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(txt, w/2, h/2 + 2);
+  });
+}
+
+/* ===================== cena ===================== */
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+const IS_TOUCH = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+renderer.setPixelRatio(Math.min(devicePixelRatio, IS_TOUCH ? 1.25 : 2));
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;   // sombras com borda macia, no PC e no celular
+renderer.shadowMap.autoUpdate = false;              // o mapa de sombra é calculado uma vez por quadro (há dois renders por quadro com o bloom)
+
+const scene = new THREE.Scene();
+/* Cores: o render final passa por correção de gama (sRGB). No three r128 as cores hex dos materiais
+   são usadas "cruas", então convertemos para linear antes; assim o hex aparece na tela como foi escrito,
+   em vez de clarear e virar pastel. */
+const POST = !!(THREE.EffectComposer && THREE.UnrealBloomPass && THREE.ShaderPass && THREE.GammaCorrectionShader);
+const lin = c => new THREE.Color(c).convertSRGBToLinear();
+const SKY = POST ? lin(0x5FBCFF) : new THREE.Color(0x5FBCFF);   // o fundo não passa pela gama no render direto
+scene.background = SKY;
+scene.fog = new THREE.Fog(lin(0xA2D8FF), 80, 210);
+
+const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 400);
+
+/* ---------- luz de dia de praia ----------
+   Sol quente, céu azul rebatendo em cima, areia clara rebatendo embaixo,
+   e uma luz de preenchimento fria do lado oposto para as sombras não ficarem pretas.
+   A soma fica perto de 1.1 nas faces ao sol, para a areia ser clara sem estourar. */
+scene.add(new THREE.HemisphereLight(0xCFEBFF, 0xEBD29A, 0.42));
+const sun = new THREE.DirectionalLight(0xFFE9C4, 0.85);
+sun.position.set(26, 42, 18); sun.castShadow = true;
+const SHADOW_RES = IS_TOUCH ? 1024 : 2048;
+sun.shadow.mapSize.set(SHADOW_RES, SHADOW_RES);
+Object.assign(sun.shadow.camera, { left: -40, right: 40, top: 40, bottom: -40, near: 5, far: 140 });
+sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.03;
+scene.add(sun); scene.add(sun.target);
+const fill = new THREE.DirectionalLight(0xA9D6FF, 0.16); fill.position.set(-30, 20, -25); scene.add(fill);
+
+/* ---------- pós-processamento: bloom seletivo ----------
+   Só o que está na camada BLOOM brilha (estrelas, fogos, velas, neon do letreiro).
+   Passo 1: a cena é renderizada com tudo o que não brilha pintado de preto e passa pelo UnrealBloomPass.
+   Passo 2: a cena normal é renderizada e somada ao brilho, com correção de gama no fim.
+   No celular o bloom roda em resolução reduzida para manter o desempenho. */
+const BLOOM = 1;
+const bloomTest = new THREE.Layers(); bloomTest.set(BLOOM);
+const glow = o => { o.layers.enable(BLOOM); return o; };
+let bloomComposer = null, finalComposer = null, bloomPass = null, fxaaPass = null;
+const BLOOM_SCALE = IS_TOUCH ? 0.35 : 0.5;
+const darkMesh = new THREE.MeshBasicMaterial({ color: 0x000000, fog: false });
+const darkPoints = new THREE.PointsMaterial({ color: 0x000000, size: 0.01, fog: false });
+const savedMats = new Map();
+function darken(o){ if ((o.isMesh || o.isPoints) && !bloomTest.test(o.layers)){ savedMats.set(o, o.material); o.material = o.isPoints ? darkPoints : darkMesh; } }
+function restore(o){ const m = savedMats.get(o); if (m){ o.material = m; savedMats.delete(o); } }
+const useMSAA = POST && renderer.capabilities.isWebGL2 && !IS_TOUCH;
+if (POST){
+  const target = useMSAA ? new THREE.WebGLMultisampleRenderTarget(2, 2, { format: THREE.RGBAFormat }) : undefined;
+  bloomComposer = new THREE.EffectComposer(renderer);
+  bloomComposer.renderToScreen = false;
+  bloomComposer.addPass(new THREE.RenderPass(scene, camera));
+  bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(256, 256), IS_TOUCH ? 0.55 : 0.7, 0.35, 0.2);
+  bloomComposer.addPass(bloomPass);
+  const mixPass = new THREE.ShaderPass(new THREE.ShaderMaterial({
+    uniforms: { baseTexture: { value: null }, bloomTexture: { value: bloomComposer.renderTarget2.texture } },
+    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: 'uniform sampler2D baseTexture; uniform sampler2D bloomTexture; varying vec2 vUv; void main(){ gl_FragColor = texture2D(baseTexture, vUv) + texture2D(bloomTexture, vUv); }'
+  }), 'baseTexture');
+  mixPass.needsSwap = true;
+  finalComposer = new THREE.EffectComposer(renderer, target);
+  finalComposer.addPass(new THREE.RenderPass(scene, camera));
+  finalComposer.addPass(mixPass);
+  if (!useMSAA && THREE.FXAAShader){ fxaaPass = new THREE.ShaderPass(THREE.FXAAShader); finalComposer.addPass(fxaaPass); }
+  finalComposer.addPass(new THREE.ShaderPass(THREE.GammaCorrectionShader));
+}
+const BLACK = new THREE.Color(0x000000);
+function renderFrame(){
+  renderer.shadowMap.needsUpdate = true;
+  if (!POST){ renderer.render(scene, camera); return; }
+  // passo 1: só o que brilha
+  const fog = scene.fog; scene.fog = null; scene.background = BLACK;
+  scene.traverse(darken);
+  bloomComposer.render();
+  scene.traverse(restore);
+  scene.fog = fog; scene.background = SKY;
+  // passo 2: cena normal + brilho
+  finalComposer.render();
+}
+
+const solids = [];
+const mat = (color, extra={}) => {
+  const m = new THREE.MeshStandardMaterial(Object.assign({ color, roughness: .85, metalness: 0 }, extra));
+  m.color.convertSRGBToLinear(); if (extra.emissive !== undefined) m.emissive.convertSRGBToLinear();
+  return m;
+};
+function block(x, y, z, w, h, d, color, opts={}){
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), opts.material || mat(color));
+  m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true;
+  (opts.parent || scene).add(m);
+  if (opts.solid !== false) solids.push(new THREE.Box3(new THREE.Vector3(x-w/2, y-h/2, z-d/2), new THREE.Vector3(x+w/2, y+h/2, z+d/2)));
+  return m;
+}
+
+/* ---------- praia de Itacoatiara ----------
+   A faixa de areia é o mapa jogável. O mar fica no lado -z (atrás do letreiro),
+   o costão de pedra no lado +x, o morro verde no lado -x e a restinga atrás. */
+const SEA_Y = -0.5;
+// areia (baseplate jogável)
+const ground = new THREE.Mesh(new THREE.BoxGeometry(72, 2, 72), mat(0xffffff, { map: groundTex() }));
+ground.position.y = -1; ground.receiveShadow = true; scene.add(ground);
+solids.push(new THREE.Box3(new THREE.Vector3(-36,-2,-36), new THREE.Vector3(36,0,36)));
+// areia molhada perto da água
+const wet = new THREE.Mesh(new THREE.PlaneGeometry(72, 7), mat(0xD7BC86, { roughness: .55 }));
+wet.rotation.x = -Math.PI/2; wet.position.set(0, 0.012, -32.5); wet.receiveShadow = true; scene.add(wet);
+// degrau da areia descendo para o mar
+block(0, -0.35, -37.5, 72, 0.7, 3, 0xE3C892, { solid:false });
+// mar: shader leve com ondas 3D (deslocamento de vértices), reflexo do céu por Fresnel,
+// brilho do sol, água rasa turquesa perto da areia e azul profundo ao longe
+const seaUniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
+  uTime:    { value: 0 },
+  uShallow: { value: POST ? lin(0x3FD3DC) : new THREE.Color(0x3FD3DC) },   // o shader da água não passa pela gama no render direto
+  uDeep:    { value: POST ? lin(0x0B6AA6) : new THREE.Color(0x0B6AA6) },
+  uSky:     { value: POST ? lin(0xC4E8FF) : new THREE.Color(0xC4E8FF) },
+  uSunDir:  { value: sun.position.clone().normalize() },
+}]);
+const seaMat = new THREE.ShaderMaterial({
+  uniforms: seaUniforms, fog: true,
+  vertexShader: `
+    uniform float uTime;
+    varying vec3 vWorldPos; varying vec3 vNormal; varying float vWave;
+    #include <fog_pars_vertex>
+    float wave(vec2 p, float t){
+      return sin(p.x*0.30 + t*1.0)*0.10 + sin(p.y*0.45 - t*0.8)*0.07
+           + sin((p.x+p.y)*0.85 + t*1.6)*0.035 + sin((p.x*0.7-p.y*0.4)*1.4 + t*2.2)*0.02;
+    }
+    void main(){
+      vec4 wp = modelMatrix * vec4(position, 1.0);
+      float amp = 1.0 - smoothstep(-46.0, -37.0, wp.z);          // sem onda grande encostada na areia
+      float h = wave(wp.xz, uTime) * amp;
+      float e = 0.8;
+      float hx = wave(wp.xz + vec2(e, 0.0), uTime) * amp;
+      float hz = wave(wp.xz + vec2(0.0, e), uTime) * amp;
+      wp.y += h;
+      vNormal = normalize(vec3(h - hx, e, h - hz));
+      vWorldPos = wp.xyz; vWave = h;
+      vec4 mvPosition = viewMatrix * wp;
+      gl_Position = projectionMatrix * mvPosition;
+      #include <fog_vertex>
+    }`,
+  fragmentShader: `
+    uniform float uTime; uniform vec3 uShallow, uDeep, uSky, uSunDir;
+    varying vec3 vWorldPos; varying vec3 vNormal; varying float vWave;
+    #include <fog_pars_fragment>
+    void main(){
+      vec3 N = normalize(vNormal);
+      float r1 = sin(vWorldPos.x*2.0 + uTime*2.0 + sin(vWorldPos.z*1.3 + uTime));
+      float r2 = sin(vWorldPos.z*2.3 - uTime*1.7 + sin(vWorldPos.x*0.9));
+      N = normalize(N + vec3(r1*0.07, 0.0, r2*0.07));
+      vec3 V = normalize(cameraPosition - vWorldPos);
+      float fres = pow(1.0 - max(dot(N, V), 0.0), 3.0);
+      float deepMix = smoothstep(-40.0, -95.0, vWorldPos.z);
+      deepMix = max(deepMix, smoothstep(45.0, 110.0, abs(vWorldPos.x)));
+      vec3 water = mix(uShallow, uDeep, deepMix) + vec3(vWave*0.35);
+      vec3 col = mix(water, uSky, fres*0.7);
+      vec3 H = normalize(V + uSunDir);
+      float spec = pow(max(dot(N, H), 0.0), 180.0);
+      float glint = pow(max(dot(N, H), 0.0), 900.0) * (0.6 + 0.4*sin(uTime*6.0 + vWorldPos.x*3.1 + vWorldPos.z*2.7));
+      col += vec3(1.0, 0.97, 0.9) * (spec*0.8 + glint*1.4);
+      float shore = smoothstep(-43.0, -37.0, vWorldPos.z);     // espuma clareando a água rasa junto da areia
+      col = mix(col, vec3(0.92, 0.98, 1.0), shore * 0.45 * (0.55 + 0.45*sin(uTime*1.4 + vWorldPos.x*0.35)));
+      gl_FragColor = vec4(col, 1.0);
+      #include <fog_fragment>
+    }`
+});
+const sea = new THREE.Mesh(new THREE.PlaneGeometry(600, 600, IS_TOUCH ? 90 : 150, IS_TOUCH ? 90 : 150), seaMat);
+sea.rotation.x = -Math.PI/2; sea.position.y = SEA_Y; scene.add(sea);
+// ondas quebrando na praia (linhas de espuma vindo em direção à areia)
+const foams = [];
+for (let k = 0; k < 5; k++){
+  const f = new THREE.Mesh(new THREE.BoxGeometry(110, 0.12, 1.4), new THREE.MeshStandardMaterial({ color: 0xffffff, transparent: true, opacity: .85, roughness: 1 }));
+  f.position.set(0, SEA_Y + 0.08, -40 - k*6); scene.add(f); foams.push({ m: f, speed: 2.2 + k*0.25 });
+}
+// terra firme em volta (restinga e vegetação) para o mar aparecer só do lado certo
+block(0, -1.2, 75, 300, 2, 80, 0x5E9E52, { solid:false });
+block(-85, -1.2, 10, 100, 2, 90, 0x6BA55A, { solid:false });
+block(-60, -1.1, -20, 50, 2, 40, 0xE6CD98, { solid:false });
+// arbustos da restinga
+for (let i = 0; i < 26; i++){
+  const bx = -60 + (i*23)%120, bz = 40 + (i*13)%22;
+  block(bx, 0.6 + (i%3)*0.3, bz, 2 + (i%3), 1.2 + (i%3)*0.6, 2 + (i%2), [0x3E8E41,0x4FA34D,0x2F7A3B][i%3], { solid:false });
+}
+// costão de Itacoatiara: granito escuro em camadas, com mato nas fendas
+function costao(){
+  const g = new THREE.Group(); g.position.set(60, 0, -12); g.rotation.y = -0.25; scene.add(g);
+  const layers = [[44,5,70],[40,5,62],[36,5,54],[31,5,46],[26,5,38],[20,5,30],[14,4,22],[8,3,14],[4,2,8]];
+  let y = -1.5;
+  layers.forEach(([w,h,d], i) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat([0x4D4944,0x57534D,0x45413C][i%3], { roughness: 1 }));
+    m.position.set((i%2)*1.2, y + h/2, -(i%3)*1.5); m.castShadow = m.receiveShadow = true; g.add(m); y += h;
+  });
+  for (let i = 0; i < 40; i++){
+    const li = i % layers.length, [w,h,d] = layers[li];
+    const side = (i*7)%4, m = new THREE.Mesh(new THREE.BoxGeometry(2 + (i%3), 1.2, 2 + (i%2)), mat([0x3E8E41,0x5BB04F][i%2]));
+    const ly = -1.5 + layers.slice(0, li).reduce((a,l) => a + l[1], 0) + h;
+    if (side === 0) m.position.set(-w/2 + (i%5), ly, (i*11)%d - d/2); else if (side === 1) m.position.set((i*13)%w - w/2, ly, d/2 - (i%4)); else if (side === 2) m.position.set(w/2 - (i%5), ly, (i*7)%d - d/2); else m.position.set((i*17)%w - w/2, ly, -d/2 + (i%4));
+    g.add(m);
+  }
+}
+costao();
+// morro das Andorinhas (mais baixo e verde, do outro lado)
+(function morro(){
+  const g = new THREE.Group(); g.position.set(-66, 0, -24); g.rotation.y = 0.3; scene.add(g);
+  const layers = [[40,4,46],[34,4,38],[27,4,30],[20,4,22],[12,3,14],[6,2,8]];
+  let y = -1.5;
+  layers.forEach(([w,h,d], i) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(i < 2 ? 0x55514B : [0x3E8E41,0x4FA34D][i%2], { roughness: 1 }));
+    m.position.set(0, y + h/2, (i%2)*1.5); m.castShadow = m.receiveShadow = true; g.add(m); y += h;
+  });
+})();
+
+/* ---------- letreiro ---------- */
+let signCover = null, revealing = false;
+const neon = [];   // moldura e lâmpadas que acendem na revelação
+(function makeSign(){
+  const x = 0, z = -13;
+  block(x-6.2, 1.6, z, 0.5, 3.2, 0.5, 0x8C5A2B);
+  block(x+6.2, 1.6, z, 0.5, 3.2, 0.5, 0x8C5A2B);
+  const side = mat(0x1F2A44);
+  const mats = [side, side, side, side, mat(0xffffff, { map: signFront() }), mat(0xffffff, { map: signBack() })];
+  const board = block(x, 5.1, z, 14, 4.6, 0.4, 0xffffff, { material: mats });
+  // moldura neon rosa em volta da placa + lâmpadas coloridas; começam apagadas e só brilham na revelação
+  const neonMat = mat(0x3A1030, { emissive: 0xFF4FA3, emissiveIntensity: 0, roughness: .4 });
+  [[x, 5.1+2.42, z, 14.5, 0.22, 0.5], [x, 5.1-2.42, z, 14.5, 0.22, 0.5], [x-7.14, 5.1, z, 0.22, 5.06, 0.5], [x+7.14, 5.1, z, 0.22, 5.06, 0.5]].forEach(([bx,by,bz,w,h,d]) => {
+    neon.push(glow(block(bx, by, bz, w, h, d, 0xffffff, { material: neonMat, solid:false })));
+  });
+  const bulbCols = [0xFFD23F, 0x3DDC97, 0x2EC4FF, 0xFF4FA3, 0xA66CFF];
+  for (let i = 0; i < 12; i++){
+    const bm = mat(0x332222, { emissive: bulbCols[i%5], emissiveIntensity: 0, roughness: .3 });
+    const b1 = new THREE.Mesh(new THREE.SphereGeometry(0.17, 8, 8), bm); b1.position.set(x-6.6+i*1.2, 5.1+2.42, z+0.32); scene.add(glow(b1)); neon.push(b1);
+    const b2 = new THREE.Mesh(new THREE.SphereGeometry(0.17, 8, 8), bm); b2.position.set(x-6.6+i*1.2, 5.1-2.42, z+0.32); scene.add(glow(b2)); neon.push(b2);
+  }
+  // capa na frente do letreiro (desce para dentro da areia na revelação)
+  const cside = mat(0x141C30);
+  signCover = block(x, 5.1, z + 0.42, 14.3, 4.9, 0.25, 0xffffff, { material: [cside, cside, cside, cside, mat(0xffffff, { map: signCoverTex() }), cside], solid:false });
+  // bandeirinhas em cima
+  for (let i = 0; i < 9; i++){
+    const f = block(x-6+i*1.5, 7.75, z, 0.6, 0.6, 0.08, [0xFF4FA3,0xFFD23F,0x3DDC97,0x2EC4FF][i%4], { solid:false });
+    f.rotation.z = Math.PI/4;
+  }
+  block(x, 8.0, z, 13.5, 0.08, 0.08, 0x1F2A44, { solid:false });
+})();
+
+/* ---------- bolo ---------- */
+(function makeCake(){
+  const cx = 11, cz = -3;
+  const g = new THREE.Group(); g.position.set(cx, 0, cz); scene.add(g);
+  const tiers = [[2.3, 1.0, 0xFFB7D5], [1.7, 0.9, 0xFFF1C9], [1.1, 0.8, 0xFF4FA3]];
+  let y = 0;
+  tiers.forEach(([r, h, c]) => {
+    const t = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 24), mat(c)); t.position.y = y + h/2; t.castShadow = t.receiveShadow = true; g.add(t);
+    const icing = new THREE.Mesh(new THREE.CylinderGeometry(r+0.05, r+0.05, 0.18, 24), mat(0xffffff)); icing.position.y = y + h - 0.05; g.add(icing);
+    y += h;
+  });
+  for (let i = 0; i < IDADE; i++){
+    const a = i / IDADE * Math.PI*2, r = 0.75;
+    const c = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.5, 8), mat(i%2 ? 0x2EC4FF : 0xFFD23F));
+    c.position.set(Math.cos(a)*r, y + 0.25, Math.sin(a)*r); g.add(c);
+    const fl = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 8), mat(0xFFC24A, { emissive: 0xFF8A00, emissiveIntensity: 1.4 }));
+    fl.position.set(Math.cos(a)*r, y + 0.57, Math.sin(a)*r); g.add(glow(fl));
+  }
+  solids.push(new THREE.Box3(new THREE.Vector3(cx-2.3, 0, cz-2.3), new THREE.Vector3(cx+2.3, 1.0, cz+2.3)));
+  solids.push(new THREE.Box3(new THREE.Vector3(cx-1.7, 1.0, cz-1.7), new THREE.Vector3(cx+1.7, 1.9, cz+1.7)));
+  solids.push(new THREE.Box3(new THREE.Vector3(cx-1.1, 1.9, cz-1.1), new THREE.Vector3(cx+1.1, 2.7, cz+1.1)));
+})();
+
+/* ---------- presentes gigantes ---------- */
+function present(x, z, s, c1, c2, h){
+  const hh = h || s;
+  block(x, hh/2, z, s, hh, s, c1);
+  block(x, hh/2, z, s+0.06, hh+0.06, s*0.22, c2, { solid:false });
+  block(x, hh/2, z, s*0.22, hh+0.06, s+0.06, c2, { solid:false });
+  const bow = new THREE.Group(); bow.position.set(x, hh + 0.02, z); scene.add(bow);
+  [[-0.45,0,0.35],[0.45,0,0.35],[0,0,0.22]].forEach(([bx,bz,r]) => {
+    const b = new THREE.Mesh(new THREE.SphereGeometry(r*s*0.45, 10, 10), mat(c2)); b.position.set(bx*s*0.6, r*s*0.4, bz); b.castShadow = true; bow.add(b);
+  });
+}
+present(-9, -4, 3.2, 0xFF4FA3, 0xFFD23F);
+present(-14, 5, 2.4, 0x2EC4FF, 0xffffff);
+present(-6, -8.5, 2, 0xA66CFF, 0x3DDC97);
+present(8, 9, 2.2, 0x3DDC97, 0xFF4FA3);
+present(14, 6, 1.6, 0xFFD23F, 0x1F2A44);
+present(-20, -14, 4, 0xFF8A5C, 0xffffff, 2.2);
+
+/* ---------- plataformas coloridas ---------- */
+const PAL = [0xFF4FA3, 0xFFD23F, 0x3DDC97, 0x2EC4FF, 0xA66CFF, 0xFF8A5C];
+// escadaria até a torre
+for (let i = 0; i < 6; i++) block(16 + i*2, 0.5 + i, 14, 2, 1 + i*2, 2.2, PAL[i%6]);
+block(29, 3.3, 14, 4, 6.6, 4, 0xffffff);
+block(29, 6.75, 14, 4.6, 0.3, 4.6, 0xFF4FA3);
+// blocos flutuantes
+[[-6, 1.4, 16],[-9.5, 2.6, 18.5],[-13, 3.8, 20],[-17, 5, 20],[-21, 6, 18]].forEach(([x,y,z], i) => block(x, y, z, 2.2, 0.5, 2.2, PAL[(i+2)%6]));
+// arquibancada de blocos perto do spawn
+block(-3, 0.5, 7, 2, 1, 2, 0x2EC4FF); block(-5, 1, 7, 2, 2, 2, 0xFFD23F); block(-7, 1.5, 7, 2, 3, 2, 0x3DDC97);
+// pontinhos soltos
+block(20, 0.5, -8, 3, 1, 3, 0xA66CFF); block(23.5, 1.2, -10.5, 2, 2.4, 2, 0xFF8A5C);
+
+/* ---------- coqueiros blocky ---------- */
+function palm(x, z, s=1, spin=0){
+  const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = spin; scene.add(g);
+  const lean = 0.14; let tx = 0, ty = 0;
+  for (let i = 0; i < 6; i++){
+    const seg = new THREE.Mesh(new THREE.BoxGeometry(0.55*s, 0.95*s, 0.55*s), mat(i%2 ? 0x9A6B3F : 0x865A33));
+    tx = i*lean*s*1.1; ty = i*0.88*s;
+    seg.position.set(tx, ty + 0.47*s, 0); seg.rotation.z = -lean; seg.castShadow = true; g.add(seg);
+  }
+  const topx = tx + 0.2*s, topy = ty + 0.95*s;
+  for (let i = 0; i < 8; i++){
+    const fg = new THREE.Group(); fg.position.set(topx, topy, 0); fg.rotation.y = i/8*Math.PI*2; g.add(fg);
+    const f = new THREE.Mesh(new THREE.BoxGeometry(3.4*s, 0.14*s, 0.9*s), mat(i%2 ? 0x2FA84F : 0x3DBF5B));
+    f.position.set(1.6*s, 0, 0); f.rotation.z = -0.42; f.castShadow = true; fg.add(f);
+    const tip = new THREE.Mesh(new THREE.BoxGeometry(1.2*s, 0.12*s, 0.6*s), mat(0x2A9646));
+    tip.position.set(3.6*s, -1.05*s, 0); tip.rotation.z = -0.9; fg.add(tip);
+  }
+  [[-0.3,0.2],[0.3,0.25],[0,-0.3]].forEach(([cx,cz]) => {
+    const c = new THREE.Mesh(new THREE.SphereGeometry(0.28*s, 8, 8), mat(0x6B4A22)); c.position.set(topx + cx*s, topy - 0.35*s, cz*s); g.add(c);
+  });
+  solids.push(new THREE.Box3(new THREE.Vector3(x-0.4*s, 0, z-0.4*s), new THREE.Vector3(x+0.4*s, 3.5*s, z+0.4*s)));
+}
+[[-30,25],[-23,31],[-14,30],[4,31],[14,31],[25,29],[31,23],[-31,-2],[-31,12],[32,7],[-32,-20],[33,-6]].forEach(([x,z], i) => palm(x, z, 0.9 + (i%3)*0.22, i*1.3));
+
+/* ---------- guarda-sóis e cadeiras de praia ---------- */
+const UMB_TEX = umbrellaTex();
+function umbrella(x, z, chairs=1, rot=0){
+  const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = rot; scene.add(g);
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 2.6, 6), mat(0xF5F5F5)); pole.position.y = 1.3; g.add(pole);
+  const top = new THREE.Mesh(new THREE.ConeGeometry(1.9, 0.75, 8, 1, true), mat(0xffffff, { map: UMB_TEX, side: THREE.DoubleSide, roughness: .6 }));
+  top.position.y = 2.45; top.castShadow = true; g.add(top);
+  const knob = new THREE.Mesh(new THREE.SphereGeometry(0.1, 6, 6), mat(0xE8362E)); knob.position.y = 2.85; g.add(knob);
+  for (let i = 0; i < chairs; i++){
+    const c = new THREE.Group(); c.position.set(i ? 1.4 : -1.4, 0, 1.0); c.rotation.y = Math.PI; g.add(c);
+    const col = i ? 0x2EC4FF : 0xFFFFFF;
+    const seat = new THREE.Mesh(new THREE.BoxGeometry(1, 0.1, 1.1), mat(col)); seat.position.set(0, 0.38, 0); seat.castShadow = true; c.add(seat);
+    const back = new THREE.Mesh(new THREE.BoxGeometry(1, 0.9, 0.1), mat(col)); back.position.set(0, 0.8, -0.5); back.rotation.x = -0.35; back.castShadow = true; c.add(back);
+    [[-0.42,-0.45],[0.42,-0.45],[-0.42,0.45],[0.42,0.45]].forEach(([lx,lz]) => { const l = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.36, 0.08), mat(0xF5F5F5)); l.position.set(lx, 0.18, lz); c.add(l); });
+  }
+}
+[[-31,-28,1,0.2],[-23,-30,2,-0.1],[-14,-28,1,0.3],[-5,-30,2,0],[4,-28,1,-0.2],[12,-30,2,0.15],[21,-28,1,0],[29,-30,2,-0.25],[-27,-23,0,0],[26,-23,0,0]].forEach(a => umbrella(...a));
+
+/* ---------- placa da praia ---------- */
+let signpostGroup = null;
+(function signpost(){
+  const g = new THREE.Group(); g.position.set(-24, 0, -20); g.rotation.y = 0.35; scene.add(g); signpostGroup = g;
+  block(0, 1.6, 0, 0.3, 3.2, 0.3, 0x8C5A2B, { parent: g, solid:false });
+  const a = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.7, 0.14), [mat(0xB07A45),mat(0xB07A45),mat(0xB07A45),mat(0xB07A45),mat(0xffffff,{ map: signpostTex('Itacoatiara  ➜', '#B07A45') }),mat(0xB07A45)]);
+  a.position.set(0.9, 2.75, 0.2); a.castShadow = true; g.add(a);
+  const b = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.7, 0.14), [mat(0xE8362E),mat(0xE8362E),mat(0xE8362E),mat(0xE8362E),mat(0xffffff,{ map: signpostTex('Praia da Analua', '#E8362E') }),mat(0xE8362E)]);
+  b.position.set(-0.6, 1.9, 0.2); b.castShadow = true; g.add(b);
+  solids.push(new THREE.Box3(new THREE.Vector3(-24.4, 0, -20.4), new THREE.Vector3(-23.6, 3.2, -19.6)));
+})();
+
+/* ---------- quadros de fotos ---------- */
+const FOTOS = [FOTO_CENARIO_1, FOTO_CENARIO_2, FOTO_CENARIO_3, FOTO_CENARIO_4];
+function frame(x, z, i){
+  const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = Math.atan2(-x, -z); scene.add(g);
+  block(0, 1.0, 0, 0.35, 2.0, 0.35, 0x8C5A2B, { parent: g, solid:false });
+  block(0, 3.3, 0, 3.6, 2.8, 0.3, 0x1F2A44, { parent: g, solid:false });
+  block(0, 3.3, 0.02, 3.3, 2.5, 0.3, [0xFFD23F,0xFF4FA3,0x3DDC97,0x2EC4FF][i%4], { parent: g, solid:false });
+  const pm = mat(0xffffff, { map: photoFallback(i) });
+  tryLoad(FOTOS[i], pm);
+  const p = new THREE.Mesh(new THREE.PlaneGeometry(3, 2.25), pm); p.position.set(0, 3.3, 0.18); g.add(p);
+  solids.push(new THREE.Box3(new THREE.Vector3(x-1.8, 0, z-1.8), new THREE.Vector3(x+1.8, 4.7, z+1.8)));
+  return g;
+}
+const frames = [frame(-17, -9, 0), frame(18, -12, 1), frame(-11, 12, 2), frame(6, 21, 3)];
+
+/* ---------- recados escondidos pelo mapa ----------
+   Cinco frases em lugares que só aparecem explorando. Perto de cada uma, um aviso e um sominho. */
+const RECADOS = ['Nós te amamos Nalu', 'Temos orgulho de você', 'Você é linda', 'Você é inteligente', 'Você é esforçada'];
+const notes = []; let notesFound = 0;
+function wrapLines(ctx, text, maxW){
+  const words = text.split(' '), lines = []; let cur = '';
+  words.forEach(w => { const test = cur ? cur + ' ' + w : w; if (ctx.measureText(test).width > maxW && cur){ lines.push(cur); cur = w; } else cur = test; });
+  if (cur) lines.push(cur); return lines;
+}
+// estilos: 'areia' (escrito com o dedo na areia molhada), 'papel' (bilhete colado), 'madeira' (entalhado na tábua), 'etiqueta' (tag de presente)
+function noteTex(text, style){
+  return canvasTex(1024, 400, (ctx, w, h) => {
+    if (style === 'areia'){ ctx.clearRect(0,0,w,h); }
+    else if (style === 'papel'){ ctx.fillStyle = '#FFF6D6'; roundRect(ctx, 16, 16, w-32, h-32, 22); ctx.fill(); ctx.fillStyle = 'rgba(46,196,255,.75)'; ctx.fillRect(w/2-90, 0, 180, 54); ctx.strokeStyle = 'rgba(0,0,0,.08)'; ctx.lineWidth = 2; for (let y = 120; y < h-40; y += 56){ ctx.beginPath(); ctx.moveTo(60,y); ctx.lineTo(w-60,y); ctx.stroke(); } }
+    else if (style === 'madeira'){ ctx.fillStyle = '#B07A45'; ctx.fillRect(0,0,w,h); ctx.strokeStyle = 'rgba(0,0,0,.14)'; ctx.lineWidth = 3; for (let y = 24; y < h; y += 44){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke(); } }
+    else { ctx.fillStyle = '#FFD23F'; roundRect(ctx, 16, 16, w-32, h-32, 40); ctx.fill(); ctx.fillStyle = '#1F2A44'; ctx.beginPath(); ctx.arc(80, h/2, 22, 0, Math.PI*2); ctx.fill(); ctx.fillStyle = '#FFD23F'; ctx.beginPath(); ctx.arc(80, h/2, 10, 0, Math.PI*2); ctx.fill(); }
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
+    const size = style === 'areia' ? 120 : 96;
+    ctx.font = (style === 'papel' ? '600 ' : '700 ') + size + 'px ' + (style === 'areia' ? 'Nunito' : 'Fredoka') + ', Nunito, sans-serif';
+    const lines = wrapLines(ctx, text, w - 180);
+    const lh = size*1.08, y0 = h/2 - (lines.length-1)*lh/2 + (style === 'papel' ? 14 : 0);
+    lines.forEach((ln, i) => {
+      const y = y0 + i*lh;
+      if (style === 'areia'){ ctx.lineWidth = 14; ctx.strokeStyle = 'rgba(120,85,40,.55)'; ctx.strokeText(ln, w/2, y); ctx.fillStyle = 'rgba(96,66,30,.9)'; ctx.fillText(ln, w/2, y); }
+      else if (style === 'madeira'){ ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.fillText(ln, w/2+3, y+3); ctx.fillStyle = '#FFF1D8'; ctx.fillText(ln, w/2, y); }
+      else { ctx.fillStyle = style === 'papel' ? '#D63D8A' : '#1F2A44'; ctx.fillText(ln, w/2, y); }
+    });
+    if (style === 'papel' || style === 'etiqueta'){ ctx.font = '600 34px Nunito, sans-serif'; ctx.fillStyle = 'rgba(31,42,68,.55)'; ctx.fillText(style === 'papel' ? 'para a Nalu ♥' : 'Para: Nalu', w/2, h - 52); }
+  });
+}
+function note(i, style, w, h, place){
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({ map: noteTex(RECADOS[i], style), transparent: style === 'areia', roughness: .9, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+  place(m); m.updateMatrixWorld(true);
+  const wp = new THREE.Vector3(); m.getWorldPosition(wp);
+  notes.push({ m, pos: wp, text: RECADOS[i], style, found: false });
+  return m;
+}
+// 1. escrito na areia molhada, perto da água
+note(0, 'areia', 9, 3.5, m => { m.rotation.set(-Math.PI/2, 0, 0.12); m.position.set(-6, 0.03, -31.5); scene.add(m); });
+// 2. bilhete colado atrás do primeiro quadro
+note(1, 'papel', 2.8, 1.1, m => { m.rotation.y = Math.PI; m.position.set(0, 3.3, -0.17); frames[0].add(m); });
+// 3. no alto da torre, só quem sobe a escadaria vê
+note(2, 'etiqueta', 3.8, 1.5, m => { m.rotation.set(-Math.PI/2, 0, Math.PI/2); m.position.set(29, 6.92, 14); scene.add(m); });
+// 4. entalhado no verso da placa da praia
+note(3, 'madeira', 3.4, 0.7, m => { m.rotation.y = Math.PI; m.position.set(0.9, 2.75, 0.12); signpostGroup.add(m); });
+// 5. etiqueta no presente grande, no lado virado para o mar
+note(4, 'etiqueta', 3, 1.2, m => { m.rotation.y = Math.PI; m.position.set(-20, 1.1, -16.04); scene.add(m); });
+function updateNotes(){
+  notes.forEach(n => {
+    if (n.found) return;
+    const dx = n.pos.x - player.pos.x, dz = n.pos.z - player.pos.z, dy = n.pos.y - player.pos.y;
+    if (dx*dx + dz*dz < 10 && Math.abs(dy) < 4.5){
+      n.found = true; notesFound++; SFX.note();
+      toast('💌 Recado: “' + n.text + '”', 3200);
+      if (notesFound === RECADOS.length) setTimeout(() => toast('Você achou os 5 recados ♥', 3000), 3400);
+    }
+  });
+}
+
+/* ---------- balões ---------- */
+const balloons = [];
+function balloon(x, y, z, c){
+  const g = new THREE.Group(); g.position.set(x, y, z); scene.add(g);
+  const b = new THREE.Mesh(new THREE.SphereGeometry(0.6, 14, 14), mat(c, { roughness:.35 })); b.scale.y = 1.2; b.castShadow = true; g.add(b);
+  const k = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.25, 6), mat(c)); k.position.y = -0.75; k.rotation.x = Math.PI; g.add(k);
+  const s = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 3, 4), mat(0x333333)); s.position.y = -2.3; g.add(s);
+  balloons.push({ g, y, off: Math.random()*6 });
+}
+// balões longe da linha de visão do letreiro (que fica em x -7..7, z -13)
+[[15.5,5,-7,0xFF4FA3],[8.5,5.4,2,0xFFD23F],[-9,5.2,0.5,0x2EC4FF],[-13,5.6,-7,0x3DDC97],[12,5,-18,0xA66CFF],[-12,5.3,-19,0xFF8A5C],[10,4.8,11,0xFF4FA3]].forEach(a => balloon(...a));
+
+/* ---------- nuvens ---------- */
+const clouds = [];
+for (let i = 0; i < 7; i++){
+  const g = new THREE.Group(); g.position.set(-40 + i*13, 17 + (i%3)*3, -25 + (i*17)%50); scene.add(g);
+  const n = 3 + (i % 3);
+  for (let j = 0; j < n; j++){
+    const m = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.4, 2), mat(0xffffff, { roughness: 1 })); m.position.set(j*1.6 - n*0.8, (j%2)*0.5, (j%3)*0.4); g.add(m);
+  }
+  clouds.push({ g, v: 0.4 + (i%3)*0.15 });
+}
+
+/* ---------- confete ---------- */
+const CONF = 320;
+const cGeo = new THREE.BufferGeometry();
+const cPos = new Float32Array(CONF*3), cCol = new Float32Array(CONF*3), cVel = new Float32Array(CONF);
+for (let i = 0; i < CONF; i++){
+  cPos[i*3] = (Math.random()-0.5)*60; cPos[i*3+1] = Math.random()*26; cPos[i*3+2] = (Math.random()-0.5)*60;
+  const c = lin(PAL[i%6]); cCol[i*3] = c.r; cCol[i*3+1] = c.g; cCol[i*3+2] = c.b; cVel[i] = 1.2 + Math.random()*1.6;
+}
+cGeo.setAttribute('position', new THREE.BufferAttribute(cPos, 3));
+cGeo.setAttribute('color', new THREE.BufferAttribute(cCol, 3));
+scene.add(new THREE.Points(cGeo, new THREE.PointsMaterial({ size: 0.28, vertexColors: true })));
+
+/* ---------- estrelas (10 = idade) ---------- */
+function starGeo(outer=0.65, inner=0.28){
+  const s = new THREE.Shape();
+  for (let i = 0; i < 10; i++){ const r = i%2 ? inner : outer, a = i/10*Math.PI*2 - Math.PI/2; const px = Math.cos(a)*r, py = Math.sin(a)*r; i ? s.lineTo(px,py) : s.moveTo(px,py); }
+  s.closePath();
+  const g = new THREE.ExtrudeGeometry(s, { depth: 0.22, bevelEnabled: false }); g.center(); return g;
+}
+const STAR_GEO = starGeo(), STAR_MAT = mat(0xFFD23F, { emissive: 0xFFB300, emissiveIntensity: 0.9, roughness:.4 });
+const stars = [];
+// a última estrela (no topo do bolo) só aparece depois das outras nove
+const STAR_SPOTS = [[0,1.2,0],[-9,4.4,-4],[-14,3.4,5],[29,8.0,14],[-21,7.3,18],[-7,4.2,7],[23.5,3.6,-10.5],[18,1.2,-16],[-24,1.2,22],[11,3.8,-3]];
+STAR_SPOTS.forEach(([x,y,z], i) => {
+  const m = new THREE.Mesh(STAR_GEO, STAR_MAT); m.position.set(x, y, z); m.castShadow = true; scene.add(glow(m));
+  const last = i === STAR_SPOTS.length - 1;
+  if (last) m.visible = false;
+  stars.push({ m, y, got:false, hidden: last, last });
+});
+let collected = 0;
+function revealLastStar(){
+  const s = stars[stars.length - 1]; s.hidden = false; s.m.visible = true; s.m.scale.setScalar(0.01);
+  toast('✨ A última estrela apareceu no bolo!', 3200); SFX.lastStar();
+}
+
+/* ---------- fogos de artifício ---------- */
+const fireworks = []; let fwActive = false, fwTimer = 0;
+const FW_COLORS = [0xFF4FA3, 0xFFD23F, 0x3DDC97, 0x2EC4FF, 0xA66CFF, 0xFF8A5C, 0xFFFFFF];
+function launchFirework(near){
+  const x = near ? (Math.random()-0.5)*26 : (Math.random()-0.5)*64;
+  const z = near ? -22 + (Math.random()-0.5)*14 : (Math.random()-0.5)*64 - 8;
+  const ty = 13 + Math.random()*11, color = FW_COLORS[Math.floor(Math.random()*FW_COLORS.length)];
+  const rocket = new THREE.Mesh(new THREE.SphereGeometry(0.2, 6, 6), mat(0xffffff, { emissive: color, emissiveIntensity: 2.5 }));
+  rocket.position.set(x, 0.5, z); scene.add(glow(rocket));
+  fireworks.push({ phase: 'rise', m: rocket, x, z, ty, color, t: 0, dur: 0.6 + Math.random()*0.5 });
+  if (Math.random() < 0.5) SFX.launch();
+}
+function burstFirework(fw){
+  const N = 110, pos = new Float32Array(N*3), vel = [];
+  const ring = Math.random() < 0.3;
+  for (let i = 0; i < N; i++){
+    pos[i*3] = fw.x; pos[i*3+1] = fw.ty; pos[i*3+2] = fw.z;
+    const th = Math.random()*Math.PI*2, ph = ring ? Math.PI/2 : Math.acos(2*Math.random()-1), sp = 7 + Math.random()*5;
+    vel.push(new THREE.Vector3(Math.sin(ph)*Math.cos(th), Math.cos(ph), Math.sin(ph)*Math.sin(th)).multiplyScalar(sp));
+  }
+  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const pm = new THREE.PointsMaterial({ color: lin(fw.color), size: 0.45, transparent: true, opacity: 1, depthWrite: false });
+  const pts = new THREE.Points(geo, pm); scene.add(glow(pts));
+  scene.remove(fw.m); fw.m.geometry.dispose(); fw.m.material.dispose();
+  Object.assign(fw, { phase: 'burst', m: pts, vel, life: 0, span: 2 + Math.random()*0.8 });
+  SFX.boom();
+}
+function updateFireworks(dt){
+  if (fwActive){ fwTimer -= dt; if (fwTimer <= 0){ launchFirework(Math.random() < 0.45); fwTimer = 0.35 + Math.random()*0.5; } }
+  for (let i = fireworks.length - 1; i >= 0; i--){
+    const fw = fireworks[i];
+    if (fw.phase === 'rise'){
+      fw.t += dt; const k = Math.min(1, fw.t/fw.dur), e = 1 - (1-k)*(1-k);
+      fw.m.position.set(fw.x + Math.sin(fw.t*9)*0.15, 0.5 + (fw.ty - 0.5)*e, fw.z);
+      if (k >= 1) burstFirework(fw);
+    } else {
+      fw.life += dt; const arr = fw.m.geometry.attributes.position.array;
+      for (let j = 0; j < fw.vel.length; j++){
+        const v = fw.vel[j]; v.y -= 8*dt; v.multiplyScalar(1 - 1.1*dt);
+        arr[j*3] += v.x*dt; arr[j*3+1] += v.y*dt; arr[j*3+2] += v.z*dt;
+      }
+      fw.m.geometry.attributes.position.needsUpdate = true;
+      fw.m.material.opacity = Math.max(0, 1 - fw.life/fw.span);
+      fw.m.material.size = 0.45 * (1 + fw.life*0.3);
+      if (fw.life >= fw.span){ scene.remove(fw.m); fw.m.geometry.dispose(); fw.m.material.dispose(); fireworks.splice(i, 1); }
+    }
+  }
+}
+function startCelebration(){
+  fwActive = true; revealing = true; fwTimer = 0;
+  for (let i = 0; i < 4; i++){ launchFirework(true); }
+  toast('🎆 Olha o letreiro!', 3500);
+  SFX.reveal();
+  summonCompanions();
+  const musicEnd = SFX.parabens(1.4) || 10;
+  setTimeout(() => { winEl.hidden = false; }, Math.max(9000, musicEnd*1000 + 600));
+}
+
+/* ---------- personagem (R6 blocky) ---------- */
+const player = {
+  pos: new THREE.Vector3(0, 0, 6), vel: new THREE.Vector3(), grounded: false,
+  hw: 0.55, height: 2.6, yaw: Math.PI,
+};
+const avatar = new THREE.Group(); scene.add(avatar);
+let faceMat;
+(function buildAvatar(){
+  const skin = 0xF7D23E, shirt = 0xFF4FA3, pants = 0x7C4DFF, hair = 0x4A2C1A;
+  const part = (w,h,d,c,x,y,z,parent) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), mat(c)); m.position.set(x,y,z); m.castShadow = true; (parent||avatar).add(m); return m; };
+  // pernas (pivot em cima)
+  avatar.legL = new THREE.Group(); avatar.legL.position.set(-0.26, 1, 0); avatar.add(avatar.legL); part(0.5,1,0.5,pants,0,-0.5,0,avatar.legL);
+  avatar.legR = new THREE.Group(); avatar.legR.position.set( 0.26, 1, 0); avatar.add(avatar.legR); part(0.5,1,0.5,pants,0,-0.5,0,avatar.legR);
+  part(1.04,1,0.54,shirt,0,1.5,0);                     // torso
+  avatar.armL = new THREE.Group(); avatar.armL.position.set(-0.77, 2, 0); avatar.add(avatar.armL); part(0.5,1,0.5,skin,0,-0.5,0,avatar.armL);
+  avatar.armR = new THREE.Group(); avatar.armR.position.set( 0.77, 2, 0); avatar.add(avatar.armR); part(0.5,1,0.5,skin,0,-0.5,0,avatar.armR);
+  // cabeça com rosto na face frontal (+z)
+  faceMat = mat(0xffffff, { map: faceFallback() });
+  tryLoad(rostoImg, faceMat);
+  const side = mat(skin);
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.62, 0.62), [side, side, side, side, faceMat, side]);
+  head.position.y = 2.33; head.castShadow = true; avatar.add(head);
+  // cabelo
+  part(0.7, 0.2, 0.7, hair, 0, 2.7, 0); part(0.7, 0.5, 0.2, hair, 0, 2.4, -0.28); part(0.18, 0.5, 0.6, hair, -0.3, 2.4, -0.05); part(0.18, 0.5, 0.6, hair, 0.3, 2.4, -0.05);
+  // lacinho
+  const bow = part(0.25, 0.18, 0.18, 0xFF4FA3, 0.24, 2.78, 0.1); bow.rotation.z = 0.4;
+})();
+
+/* ===================== companheiros: Ravi, Apolo e Joca =====================
+   Entram correndo depois da revelação e seguem a Analua em fila pelo mapa. */
+const companions = [];
+function childFace(){
+  return canvasTex(256, 256, (ctx) => {
+    ctx.fillStyle = '#F7D23E'; ctx.fillRect(0,0,256,256);
+    ctx.fillStyle = '#222';
+    ctx.beginPath(); ctx.ellipse(84, 108, 16, 26, 0, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(172, 108, 16, 26, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(90, 98, 6, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(178, 98, 6, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = '#222'; ctx.lineWidth = 11; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.arc(128, 128, 44, Math.PI*0.2, Math.PI*0.8); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,120,160,.6)';
+    ctx.beginPath(); ctx.arc(52, 150, 18, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(204, 150, 18, 0, Math.PI*2); ctx.fill();
+  });
+}
+// Ravi: R6 em escala pequena, camiseta azul com estrela, cabelo castanho
+function makeRavi(){
+  const g = new THREE.Group(); const s = 0.62;
+  const part = (w,h,d,c,x,y,z,parent) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w*s,h*s,d*s), mat(c)); m.position.set(x*s,y*s,z*s); m.castShadow = true; (parent||g).add(m); return m; };
+  const skin = 0xF7D23E, shirt = 0x2EC4FF, shorts = 0xFF8A5C, hair = 0x5A3A1E;
+  g.legL = new THREE.Group(); g.legL.position.set(-0.26*s, 1*s, 0); g.add(g.legL); part(0.5,1,0.5,shorts,0,-0.5,0,g.legL);
+  g.legR = new THREE.Group(); g.legR.position.set( 0.26*s, 1*s, 0); g.add(g.legR); part(0.5,1,0.5,shorts,0,-0.5,0,g.legR);
+  part(1.04,1,0.54,shirt,0,1.5,0);
+  const star = new THREE.Mesh(starGeo(0.22, 0.09), mat(0xFFD23F)); star.position.set(0, 1.5*s, 0.29*s); g.add(star);
+  g.armL = new THREE.Group(); g.armL.position.set(-0.77*s, 2*s, 0); g.add(g.armL); part(0.5,1,0.5,skin,0,-0.5,0,g.armL);
+  g.armR = new THREE.Group(); g.armR.position.set( 0.77*s, 2*s, 0); g.add(g.armR); part(0.5,1,0.5,skin,0,-0.5,0,g.armR);
+  const side = mat(skin);
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.66*s, 0.66*s, 0.66*s), [side, side, side, side, mat(0xffffff, { map: childFace() }), side]);
+  head.position.y = 2.35*s; head.castShadow = true; g.add(head);
+  part(0.74, 0.22, 0.74, hair, 0, 2.74, 0); part(0.74, 0.4, 0.2, hair, 0, 2.5, -0.3);
+  part(0.2, 0.22, 0.3, hair, 0.12, 2.9, 0.1).rotation.z = -0.5;   // topetinho
+  g.bob = 2.35*s;
+  return g;
+}
+// cachorro blocky: corpo, cabeça com focinho, orelhas, 4 patas e rabo
+function makeDog(body, dark, ears, big){
+  const g = new THREE.Group(); const s = big ? 1.0 : 0.92;
+  const part = (w,h,d,c,x,y,z,parent) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w*s,h*s,d*s), mat(c)); m.position.set(x*s,y*s,z*s); m.castShadow = true; (parent||g).add(m); return m; };
+  part(0.9, 0.8, 1.7, body, 0, 1.05, 0);                       // corpo
+  g.head = new THREE.Group(); g.head.position.set(0, 1.45*s, 0.95*s); g.add(g.head);
+  part(0.8, 0.7, 0.7, body, 0, 0, 0, g.head);                   // cabeça
+  part(0.5, 0.4, 0.45, dark, 0, -0.15, 0.5, g.head);            // focinho
+  part(0.22, 0.18, 0.18, 0x1A1A1A, 0, 0.0, 0.76, g.head);       // nariz
+  part(0.12, 0.14, 0.05, 0x111111, -0.22, 0.14, 0.36, g.head);  // olhos
+  part(0.12, 0.14, 0.05, 0x111111,  0.22, 0.14, 0.36, g.head);
+  part(0.22, 0.45, 0.16, ears, -0.42, 0.05, -0.05, g.head);     // orelhas caídas
+  part(0.22, 0.45, 0.16, ears,  0.42, 0.05, -0.05, g.head);
+  part(0.16, 0.08, 0.3, 0xFF4FA3, 0, -0.4, 0.4, g.head);        // língua
+  g.legs = [];
+  [[-0.3, 0.55],[0.3, 0.55],[-0.3,-0.55],[0.3,-0.55]].forEach(([x,z]) => {
+    const l = new THREE.Group(); l.position.set(x*s, 0.7*s, z*s); g.add(l); part(0.3, 0.7, 0.3, body, 0, -0.35, 0, l); g.legs.push(l);
+  });
+  g.tail = new THREE.Group(); g.tail.position.set(0, 1.3*s, -0.85*s); g.add(g.tail);
+  part(0.18, 0.18, 0.7, body, 0, 0.15, -0.3, g.tail).rotation.x = -0.5;
+  const collar = part(0.86, 0.12, 0.76, big ? 0xE8362E : 0x2EC4FF, 0, 0.3, 0, g.head); collar.position.y = -0.4*s; collar.position.z = -0.05*s;
+  g.bob = 1.05*s;
+  return g;
+}
+function addCompanion(name, g, offset, speed, kind){
+  g.visible = false; scene.add(g);
+  companions.push({ name, g, offset, speed, kind, pos: new THREE.Vector3(), yaw: 0, t: Math.random()*6, active: false, runT: 0, hop: 0, hopV: 0 });
+}
+addCompanion('Ravi',  makeRavi(),                              { back: 2.6, side: -1.4 }, 6.5, 'kid');
+addCompanion('Apolo', makeDog(0xE9B94A, 0xF6DFA0, 0xCF9A2E, true), { back: 2.4, side:  1.8 }, 8.5, 'dog');
+addCompanion('Joca',  makeDog(0x1E1E22, 0x2E2E33, 0x151517, false), { back: 4.2, side:  0.4 }, 8.0, 'dog');
+function summonCompanions(){
+  // entram pela lateral do mapa, correndo em direção à Analua
+  companions.forEach((c, i) => {
+    setTimeout(() => {
+      c.pos.set(player.pos.x + 22 + i*4, 0, player.pos.z + 10 - i*6); c.g.position.copy(c.pos); c.g.visible = true; c.active = true;
+      toast(c.kind === 'dog' ? '🐶 ' + c.name + ' chegou para brincar!' : '👦 ' + c.name + ' chegou para brincar!', 2400);
+      if (c.kind === 'dog') SFX.bark(); else SFX.hey();
+    }, 2500 + i*2200);
+  });
+}
+const cTmp = new THREE.Vector3(), cF = new THREE.Vector3(), cR = new THREE.Vector3();
+function updateCompanions(dt, t){
+  companions.forEach(c => {
+    if (!c.active) return;
+    // ponto alvo: atrás e ao lado da Analua, em relação a para onde ela olha
+    cF.set(Math.sin(player.yaw), 0, Math.cos(player.yaw)); cR.set(cF.z, 0, -cF.x);
+    cTmp.copy(player.pos).addScaledVector(cF, -c.offset.back).addScaledVector(cR, c.offset.side);
+    const dx = cTmp.x - c.pos.x, dz = cTmp.z - c.pos.z, dist = Math.hypot(dx, dz);
+    let moving = false;
+    if (dist > 0.6){
+      const sp = Math.min(c.speed, dist*3) * dt, k = Math.min(1, sp/dist);
+      c.pos.x += dx*k; c.pos.z += dz*k; moving = true;
+      const target = Math.atan2(dx, dz); let d = target - c.yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); c.yaw += d*Math.min(1, dt*10);
+    } else {
+      // parado: olha para a Analua
+      const target = Math.atan2(player.pos.x - c.pos.x, player.pos.z - c.pos.z); let d = target - c.yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); c.yaw += d*Math.min(1, dt*4);
+    }
+    c.pos.x = Math.max(-BOUND, Math.min(BOUND, c.pos.x)); c.pos.z = Math.max(-BOUND, Math.min(BOUND, c.pos.z));
+    // altura: acompanha o bloco mais alto embaixo dele, para subir nas plataformas com ela
+    let gy = 0;
+    for (const s of solids){ if (c.pos.x > s.min.x - 0.2 && c.pos.x < s.max.x + 0.2 && c.pos.z > s.min.z - 0.2 && c.pos.z < s.max.z + 0.2 && s.max.y <= player.pos.y + 1.5 && s.max.y > gy) gy = s.max.y; }
+    c.pos.y += (gy - c.pos.y)*Math.min(1, dt*8);
+    // cachorro pula de alegria de vez em quando quando está parado perto dela
+    if (c.kind === 'dog' && !moving && Math.random() < dt*0.4 && c.hop === 0){ c.hopV = 6; }
+    if (c.hopV || c.hop){ c.hopV -= 25*dt; c.hop = Math.max(0, c.hop + c.hopV*dt); if (c.hop === 0) c.hopV = 0; }
+    c.runT = moving ? c.runT + dt*(c.kind === 'dog' ? 16 : 11) : c.runT*0.8;
+    const g = c.g; g.position.set(c.pos.x, c.pos.y + c.hop, c.pos.z); g.rotation.y = c.yaw;
+    const sw = moving ? Math.sin(c.runT) : 0;
+    if (c.kind === 'kid'){
+      g.legL.rotation.x = sw*0.8; g.legR.rotation.x = -sw*0.8; g.armL.rotation.x = -sw*0.8; g.armR.rotation.x = sw*0.8;
+      if (!moving){ g.armL.rotation.x = -2.6 + Math.sin(t*6)*0.3; }   // acena quando parado
+    } else {
+      g.legs[0].rotation.x = sw*0.9; g.legs[3].rotation.x = sw*0.9; g.legs[1].rotation.x = -sw*0.9; g.legs[2].rotation.x = -sw*0.9;
+      g.tail.rotation.y = Math.sin(t*14 + c.t)*0.7;                     // rabo abanando sempre
+      g.head.rotation.x = moving ? 0.1 : Math.sin(t*2 + c.t)*0.12;
+      g.position.y += moving ? Math.abs(Math.sin(c.runT*0.5))*0.18 : 0;  // galope
+    }
+  });
+}
+
+/* ===================== entrada (teclado, mouse, toque) ===================== */
+const keys = {};
+addEventListener('keydown', e => { keys[e.code] = true; if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault(); if (e.code === 'Space') wantJump = true; if (!started) startGame(); });
+addEventListener('keyup', e => { keys[e.code] = false; });
+let wantJump = false, jumpBuffer = 0;
+// se a janela perde o foco (troca de aba, notificação no celular), solta tudo
+function releaseAll(){ for (const k in keys) keys[k] = false; joyId = null; joyVec.x = joyVec.y = 0; knob.style.transform = ''; camId = null; }
+addEventListener('blur', releaseAll);
+document.addEventListener('visibilitychange', () => { if (document.hidden) releaseAll(); });
+
+const game = document.getElementById('game');
+const joy = document.getElementById('joy'), knob = document.getElementById('knob');
+const joyVec = { x:0, y:0 }; let joyId = null, joyCenter = null;
+const JR = 46;
+function joyMove(e){
+  let dx = e.clientX - joyCenter.x, dy = e.clientY - joyCenter.y; const len = Math.hypot(dx,dy);
+  if (len > JR){ dx *= JR/len; dy *= JR/len; }
+  knob.style.transform = `translate(${dx}px,${dy}px)`; joyVec.x = dx/JR; joyVec.y = -dy/JR;
+}
+joy.addEventListener('pointerdown', e => {
+  e.preventDefault(); if (joyId !== null) return;
+  joyId = e.pointerId; try { joy.setPointerCapture(e.pointerId); } catch (_) {}
+  const r = joy.getBoundingClientRect(); joyCenter = { x:r.left + r.width/2, y:r.top + r.height/2 }; joyMove(e);
+});
+joy.addEventListener('pointermove', e => {
+  if (e.pointerId !== joyId) return;
+  if (e.pointerType === 'mouse' && e.buttons === 0) return joyEnd(e);   // mouse já foi solto fora do joystick
+  joyMove(e);
+});
+const joyEnd = e => { if (joyId === null || (e && e.pointerId !== joyId)) return; joyId = null; joyVec.x = joyVec.y = 0; knob.style.transform = ''; };
+// o "soltar" é ouvido na janela inteira: se o dedo sair do joystick ou o navegador cancelar o toque, o boneco para
+['pointerup','pointercancel'].forEach(ev => addEventListener(ev, joyEnd, true));
+joy.addEventListener('lostpointercapture', joyEnd);
+
+const jumpBtn = document.getElementById('jump');
+jumpBtn.addEventListener('pointerdown', e => { e.preventDefault(); wantJump = true; });
+
+// câmera: arrastar no canvas (mouse ou dedo livre)
+const cam = { yaw: 0, pitch: 0.32, dist: 8.5 };
+let camId = null, camLast = null;
+canvas.addEventListener('pointerdown', e => {
+  if (camId !== null) return;
+  camId = e.pointerId; camLast = { x:e.clientX, y:e.clientY };
+  try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
+  if (e.pointerType === 'touch') game.classList.add('touch');
+});
+canvas.addEventListener('pointermove', e => {
+  if (e.pointerId !== camId) return;
+  if (e.pointerType === 'mouse' && e.buttons === 0) return camEnd(e);
+  const dx = e.clientX - camLast.x, dy = e.clientY - camLast.y; camLast = { x:e.clientX, y:e.clientY };
+  cam.yaw -= dx * 0.006; cam.pitch = Math.max(-0.2, Math.min(1.1, cam.pitch + dy * 0.004));
+});
+const camEnd = e => { if (e && e.pointerId === camId) camId = null; };
+['pointerup','pointercancel'].forEach(ev => addEventListener(ev, camEnd, true));
+canvas.addEventListener('lostpointercapture', camEnd);
+if ('ontouchstart' in window) game.classList.add('touch');
+
+/* ===================== som (sintetizado com Web Audio, sem arquivos) ===================== */
+const SFX = (() => {
+  let ctx = null, master = null, seaGain = null, muted = false, ready = false;
+  let noiseBuf = null;
+  function init(){
+    if (ready) return;
+    const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+    ctx = new AC(); master = ctx.createGain(); master.gain.value = muted ? 0 : 0.8; master.connect(ctx.destination);
+    // buffer de ruído branco reaproveitado por tudo que é "chiado": mar, passos, fogos
+    noiseBuf = ctx.createBuffer(1, ctx.sampleRate*2, ctx.sampleRate);
+    const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random()*2 - 1;
+    ready = true; sea();
+  }
+  function resume(){ if (ctx && ctx.state === 'suspended') ctx.resume(); }
+  function noise(){ const s = ctx.createBufferSource(); s.buffer = noiseBuf; s.loop = true; return s; }
+  // mar: ruído filtrado com ondas lentas de volume
+  function sea(){
+    const src = noise(); const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 700;
+    seaGain = ctx.createGain(); seaGain.gain.value = 0.05;
+    const lfo = ctx.createOscillator(); lfo.frequency.value = 0.11; const lg = ctx.createGain(); lg.gain.value = 0.035;
+    lfo.connect(lg); lg.connect(seaGain.gain);
+    src.connect(f); f.connect(seaGain); seaGain.connect(master); src.start(); lfo.start();
+  }
+  function tone(freq, dur, { type='square', vol=0.18, slide=null, delay=0 } = {}){
+    if (!ready) return;
+    const t0 = ctx.currentTime + delay;
+    const o = ctx.createOscillator(), g = ctx.createGain(); o.type = type; o.frequency.setValueAtTime(freq, t0);
+    if (slide) o.frequency.exponentialRampToValueAtTime(slide, t0 + dur);
+    g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(vol, t0 + 0.012); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(g); g.connect(master); o.start(t0); o.stop(t0 + dur + 0.05);
+  }
+  function burst(dur, { freq=1200, vol=0.3, type='lowpass', delay=0 } = {}){
+    if (!ready) return;
+    const t0 = ctx.currentTime + delay;
+    const s = noise(); const f = ctx.createBiquadFilter(); f.type = type; f.frequency.setValueAtTime(freq, t0); f.frequency.exponentialRampToValueAtTime(Math.max(80, freq*0.15), t0 + dur);
+    const g = ctx.createGain(); g.gain.setValueAtTime(vol, t0); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    s.connect(f); f.connect(g); g.connect(master); s.start(t0); s.stop(t0 + dur + 0.05);
+  }
+  const NOTE = { C4:261.63, D4:293.66, E4:329.63, F4:349.23, G4:392, A4:440, B4:493.88, C5:523.25, D5:587.33, E5:659.25, F5:698.46, G5:783.99, A5:880, C6:1046.5 };
+  return {
+    init, resume,
+    toggle(){ muted = !muted; if (master) master.gain.value = muted ? 0 : 0.8; return muted; },
+    get muted(){ return muted; },
+    jump(){ tone(300, 0.22, { type:'square', vol:0.12, slide:720 }); },
+    land(){ burst(0.09, { freq:500, vol:0.14 }); },
+    step(i){ burst(0.05, { freq: i%2 ? 900 : 760, vol:0.07 }); },
+    star(n){ const base = [NOTE.C5, NOTE.D5, NOTE.E5, NOTE.G5, NOTE.A5][n % 5] * (n >= 5 ? 1.5 : 1); tone(base, 0.14, { type:'triangle', vol:0.16 }); tone(base*1.5, 0.28, { type:'triangle', vol:0.16, delay:0.1 }); },
+    lastStar(){ [0, .12, .24, .36, .6].forEach((d, i) => tone([NOTE.C5, NOTE.E5, NOTE.G5, NOTE.C6, NOTE.E5*2][i], i === 4 ? 0.7 : 0.16, { type:'triangle', vol:0.15, delay:d })); },
+    note(){ tone(NOTE.E5, 0.12, { type:'triangle', vol:0.12 }); tone(NOTE.G5, 0.12, { type:'triangle', vol:0.12, delay:0.11 }); tone(NOTE.C6, 0.4, { type:'triangle', vol:0.13, delay:0.22 }); },
+    bark(){ [0, 0.22].forEach(d => { tone(420, 0.09, { type:'sawtooth', vol:0.12, slide:260, delay:d }); burst(0.08, { freq:1400, vol:0.08, delay:d }); }); },
+    hey(){ tone(520, 0.12, { type:'triangle', vol:0.14, slide:760 }); tone(760, 0.2, { type:'triangle', vol:0.14, slide:640, delay:0.13 }); },
+    launch(){ tone(500, 0.6, { type:'sine', vol:0.05, slide:1600 }); },
+    boom(){ burst(0.8, { freq:1800, vol:0.16 }); tone(90, 0.45, { type:'sine', vol:0.12, slide:40 }); },
+    reveal(){
+      tone(NOTE.C5, 0.1, { vol:0.14 }); tone(NOTE.E5, 0.1, { vol:0.14, delay:0.1 }); tone(NOTE.G5, 0.1, { vol:0.14, delay:0.2 }); tone(NOTE.C6, 0.5, { vol:0.16, delay:0.3 });
+    },
+    // "Parabéns pra você" (melodia de 1893, domínio público) em chiptune
+    parabens(delay=1.2){
+      const B = 0.42; // duração de uma batida
+      const seq = [
+        ['G4',.75],['G4',.25],['A4',1],['G4',1],['C5',1],['B4',2],
+        ['G4',.75],['G4',.25],['A4',1],['G4',1],['D5',1],['C5',2],
+        ['G4',.75],['G4',.25],['G5',1],['E5',1],['C5',1],['B4',1],['A4',2],
+        ['F5',.75],['F5',.25],['E5',1],['C5',1],['D5',1],['C5',2.5]
+      ];
+      let t = delay;
+      seq.forEach(([n, b]) => { tone(NOTE[n], b*B*0.92, { type:'square', vol:0.11, delay:t }); tone(NOTE[n]/2, b*B*0.9, { type:'triangle', vol:0.07, delay:t }); t += b*B; });
+      return t;
+    }
+  };
+})();
+const muteBtn = document.getElementById('mute');
+muteBtn.addEventListener('click', () => { const m = SFX.toggle(); muteBtn.textContent = m ? '🔇' : '🔊'; muteBtn.setAttribute('aria-pressed', String(m)); });
+['pointerdown','keydown','click'].forEach(ev => addEventListener(ev, () => { SFX.init(); SFX.resume(); }, { passive:true }));
+
+/* ===================== HUD ===================== */
+const starsEl = document.getElementById('stars'), toastEl = document.getElementById('toast');
+let toastT = null;
+function toast(msg, ms=1600){ toastEl.textContent = msg; toastEl.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => toastEl.classList.remove('show'), ms); }
+document.getElementById('banner').textContent = '🎂 ' + NOME + ', ' + IDADE + ' anos';
+document.getElementById('winFoot').textContent = RECADO + ' ♥';
+
+let started = false;
+const startEl = document.getElementById('start'), winEl = document.getElementById('win');
+function startGame(){ started = true; startEl.hidden = true; toast('Encontre as ' + TOTAL_ESTRELAS + ' estrelas ⭐', 2200); }
+document.getElementById('play').addEventListener('click', startGame);
+document.getElementById('keep').addEventListener('click', () => { winEl.hidden = true; });
+
+/* ===================== física e loop ===================== */
+const GRAV = -30, SPEED = 7.5, JUMP = 12.5, BOUND = 34;
+const pBox = new THREE.Box3();
+function playerBox(){ pBox.min.set(player.pos.x - player.hw, player.pos.y, player.pos.z - player.hw); pBox.max.set(player.pos.x + player.hw, player.pos.y + player.height, player.pos.z + player.hw); return pBox; }
+const EPS = 0.03;
+// só conta colisão se houver sobreposição real nos outros dois eixos (quem está em pé em cima de um bloco não bate nele de lado)
+function hits(s, axis){
+  for (const a of ['x','y','z']){
+    if (a === axis) continue;
+    if (pBox.min[a] >= s.max[a] - EPS || pBox.max[a] <= s.min[a] + EPS) return false;
+  }
+  return pBox.min[axis] < s.max[axis] && pBox.max[axis] > s.min[axis];
+}
+function moveAxis(axis, delta){
+  if (!delta) return;
+  player.pos[axis] += delta; playerBox();
+  for (const s of solids){
+    if (!hits(s, axis)) continue;
+    if (axis === 'y'){
+      if (delta < 0){ player.pos.y = s.max.y; player.grounded = true; } else { player.pos.y = s.min.y - player.height; }
+      player.vel.y = 0;
+    } else {
+      player.pos[axis] = delta > 0 ? s.min[axis] - player.hw - 0.001 : s.max[axis] + player.hw + 0.001;
+    }
+    playerBox();
+  }
+}
+
+const tmpF = new THREE.Vector3(), tmpR = new THREE.Vector3(), camTarget = new THREE.Vector3(), camGoal = new THREE.Vector3();
+let last = performance.now(), walkT = 0, stepT = 0, stepI = 0;
+function resize(){
+  const w = game.clientWidth, h = game.clientHeight;
+  renderer.setSize(w, h, false); camera.aspect = w/h; camera.updateProjectionMatrix();
+  if (POST){
+    const pr = renderer.getPixelRatio();
+    finalComposer.setSize(useMSAA ? w*pr : w, useMSAA ? h*pr : h);   // com alvo MSAA próprio o composer não multiplica pelo pixel ratio
+    bloomComposer.setSize(Math.max(64, Math.round(w*BLOOM_SCALE)), Math.max(64, Math.round(h*BLOOM_SCALE)));
+    if (fxaaPass) fxaaPass.material.uniforms.resolution.value.set(1/(w*pr), 1/(h*pr));
+  }
+}
+addEventListener('resize', resize); resize();
+
+function frameLoop(now){
+  requestAnimationFrame(frameLoop);
+  const dt = Math.min(0.05, (now - last)/1000); last = now;
+  const t = now/1000;
+
+  // entrada
+  let ix = 0, iz = 0;
+  if (started){
+    if (keys.KeyW || keys.ArrowUp) iz += 1; if (keys.KeyS || keys.ArrowDown) iz -= 1;
+    if (keys.KeyD || keys.ArrowRight) ix += 1; if (keys.KeyA || keys.ArrowLeft) ix -= 1;
+    ix += joyVec.x; iz += joyVec.y;
+    if (keys.KeyQ) cam.yaw += 1.8*dt; if (keys.KeyE) cam.yaw -= 1.8*dt;
+  }
+  const il = Math.hypot(ix, iz); if (il > 1){ ix /= il; iz /= il; }
+  tmpF.set(-Math.sin(cam.yaw), 0, -Math.cos(cam.yaw)); tmpR.set(Math.cos(cam.yaw), 0, -Math.sin(cam.yaw));
+  const mx = tmpF.x*iz + tmpR.x*ix, mz = tmpF.z*iz + tmpR.z*ix;
+  const moving = il > 0.08;
+
+  // pulo (com buffer curto para o toque)
+  if (wantJump){ jumpBuffer = 0.12; wantJump = false; }
+  if (jumpBuffer > 0){ if (player.grounded){ player.vel.y = JUMP; player.grounded = false; jumpBuffer = 0; SFX.jump(); } else jumpBuffer -= dt; }
+
+  // física
+  player.vel.y += GRAV*dt;
+  const wasGrounded = player.grounded;
+  player.grounded = false;
+  moveAxis('x', mx*SPEED*dt);
+  moveAxis('z', mz*SPEED*dt);
+  moveAxis('y', player.vel.y*dt);
+  player.pos.x = Math.max(-BOUND, Math.min(BOUND, player.pos.x)); player.pos.z = Math.max(-BOUND, Math.min(BOUND, player.pos.z));
+  if (player.pos.y < 0){ player.pos.y = 0; player.vel.y = 0; player.grounded = true; }
+  if (player.pos.y < -12){ player.pos.set(0, 0.5, 6); player.vel.set(0,0,0); toast('Opa! De volta ao início 🙂'); }
+  if (player.grounded && !wasGrounded && started) SFX.land();
+  if (player.grounded && moving){ stepT += dt; if (stepT > 0.3){ stepT = 0; SFX.step(stepI++); } } else stepT = 0.2;
+
+  // avatar
+  avatar.position.copy(player.pos);
+  if (moving){ const target = Math.atan2(mx, mz); let d = target - player.yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); player.yaw += d * Math.min(1, dt*14); }
+  avatar.rotation.y = player.yaw;
+  walkT = moving ? walkT + dt*10 : walkT*0.85;
+  const sw = moving ? Math.sin(walkT)*0.7 : 0;
+  avatar.legL.rotation.x = sw; avatar.legR.rotation.x = -sw; avatar.armL.rotation.x = -sw; avatar.armR.rotation.x = sw;
+  if (!player.grounded && !moving){ avatar.armL.rotation.x = avatar.armR.rotation.x = -2.6; }
+
+  // câmera 3ª pessoa
+  camTarget.set(player.pos.x, player.pos.y + 1.9, player.pos.z);
+  camGoal.set(camTarget.x + Math.sin(cam.yaw)*Math.cos(cam.pitch)*cam.dist, camTarget.y + Math.sin(cam.pitch)*cam.dist, camTarget.z + Math.cos(cam.yaw)*Math.cos(cam.pitch)*cam.dist);
+  camGoal.y = Math.max(0.6, camGoal.y);
+  camera.position.lerp(camGoal, Math.min(1, dt*9)); camera.lookAt(camTarget);
+
+  // estrelas
+  stars.forEach((s, i) => {
+    if (s.got || s.hidden) return;
+    s.m.rotation.y = t*2 + i; s.m.position.y = s.y + Math.sin(t*3 + i)*0.15;
+    if (s.last){ // a última cresce ao aparecer e pulsa mais forte
+      if (s.m.scale.x < 1.6) s.m.scale.setScalar(Math.min(1.6, s.m.scale.x + dt*2.2));
+      s.m.position.y = s.y + 0.4 + Math.sin(t*4)*0.25;
+    }
+    const dx = s.m.position.x - player.pos.x, dz = s.m.position.z - player.pos.z, dy = s.m.position.y - (player.pos.y + 1.3);
+    if (dx*dx + dz*dz < 1.6 && Math.abs(dy) < 1.8){
+      s.got = true; s.m.visible = false; collected++;
+      starsEl.textContent = '⭐ ' + collected + '/' + TOTAL_ESTRELAS; SFX.star(collected - 1);
+      if (collected >= TOTAL_ESTRELAS){ startCelebration(); }
+      else if (collected === TOTAL_ESTRELAS - 1){ revealLastStar(); }
+      else toast('⭐ ' + collected + ' de ' + TOTAL_ESTRELAS + '!');
+    }
+  });
+  STAR_MAT.emissiveIntensity = 0.55 + Math.sin(t*3)*0.25;
+  // neon do letreiro acende na revelação e fica pulsando
+  if (revealing){
+    neon.forEach((n, i) => { const m = n.material; m.emissiveIntensity = Math.min(1.6, m.emissiveIntensity + dt*1.2); if (m.emissiveIntensity >= 1.6) m.emissiveIntensity = 1.3 + Math.sin(t*5 + i)*0.35; });
+  }
+
+  // vida no cenário
+  balloons.forEach(b => { b.g.position.y = b.y + Math.sin(t*1.3 + b.off)*0.35; b.g.rotation.z = Math.sin(t*0.9 + b.off)*0.08; });
+  clouds.forEach(c => { c.g.position.x += c.v*dt; if (c.g.position.x > 55) c.g.position.x = -55; });
+  // revelação do letreiro: a capa afunda na areia
+  if (revealing && signCover){
+    signCover.position.y -= dt*1.6;
+    if (signCover.position.y < -3.2){ scene.remove(signCover); signCover = null; }
+  }
+  updateFireworks(dt);
+  updateCompanions(dt, t);
+  if (started) updateNotes();
+  // mar: ondas do shader e linhas de espuma chegando na areia
+  seaUniforms.uTime.value = t;
+  foams.forEach((f, k) => {
+    f.m.position.z += f.speed*dt;
+    const dist = -36.6 - f.m.position.z;                 // distância até a areia
+    f.m.material.opacity = Math.max(0, Math.min(0.9, dist/5));
+    f.m.position.x = Math.sin(t*0.6 + k)*2;
+    if (f.m.position.z > -36.6) f.m.position.z = -66;
+  });
+  const pa = cGeo.attributes.position.array;
+  for (let i = 0; i < CONF; i++){ pa[i*3+1] -= cVel[i]*dt; pa[i*3] += Math.sin(t*2 + i)*0.004; if (pa[i*3+1] < 0.2){ pa[i*3+1] = 24 + Math.random()*4; pa[i*3] = (Math.random()-0.5)*60; pa[i*3+2] = (Math.random()-0.5)*60; } }
+  cGeo.attributes.position.needsUpdate = true;
+
+  renderFrame();
+}
+// espera a fonte do letreiro antes de desenhar as texturas de texto
+const boot = () => requestAnimationFrame(frameLoop);
+if (document.fonts && document.fonts.load) {
+  Promise.race([Promise.all([document.fonts.load('700 100px Fredoka'), document.fonts.load('600 100px Nunito')]), new Promise(r => setTimeout(r, 1500))]).then(() => {
+    // redesenha a frente do letreiro e os recados com as fontes carregadas
+    scene.traverse(o => { if (o.material && Array.isArray(o.material) && o.material[4] && o.material[4].map && o.geometry.parameters && o.geometry.parameters.width === 14){ o.material[4].map = signFront(); o.material[4].needsUpdate = true; } });
+    notes.forEach(n => { n.m.material.map.dispose(); n.m.material.map = noteTex(n.text, n.style); n.m.material.needsUpdate = true; });
+    boot();
+  });
+} else boot();
+</script>
