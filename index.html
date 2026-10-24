@@ -1,5 +1,12 @@
 <title>Mundo da Analua</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="claude:viewport-fit-sides" content="cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Mundo da Analua">
+<meta name="theme-color" content="#7cc8ff">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;700&family=Nunito:wght@600;800&display=swap">
 <style>
   /* Layout: tela cheia com o canvas 3D atrás e um HUD leve por cima (joystick, pulo, contador). Mundo único, visual fixo de "sol de festa", sem tema escuro por escolha. */
@@ -30,6 +37,23 @@
     width:42px;height:42px;border-radius:50%;border:0;background:rgba(255,255,255,.92);font-size:20px;line-height:1;
     box-shadow:0 4px 0 rgba(31,42,68,.18);cursor:pointer;touch-action:none}
   #mute:focus-visible{outline:3px solid var(--ink);outline-offset:3px}
+  #fs{position:absolute;top:calc(env(safe-area-inset-top,0px) + 112px);right:max(16px, env(safe-area-inset-right,0px));
+    width:42px;height:42px;border-radius:50%;border:0;background:rgba(255,255,255,.92);color:var(--ink);padding:0;
+    display:grid;place-items:center;box-shadow:0 4px 0 rgba(31,42,68,.18);cursor:pointer;touch-action:manipulation}
+  #fs svg{width:22px;height:22px;display:block}
+  #fs:focus-visible{outline:3px solid var(--ink);outline-offset:3px}
+  #fs .ico-out{display:none}
+  #fs[aria-pressed="true"] .ico-in{display:none}
+  #fs[aria-pressed="true"] .ico-out{display:block}
+  #iosTip{position:absolute;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 18px);transform:translateX(-50%);
+    width:min(340px, calc(100% - 32px));background:#fff;color:var(--ink);border-radius:18px;padding:14px 16px 14px;
+    box-shadow:0 6px 0 rgba(31,42,68,.18);font-family:var(--font-body);font-weight:600;font-size:15px;line-height:1.35;z-index:30;text-align:left}
+  #iosTip b{font-family:var(--font-display);font-weight:700;display:block;font-size:17px;margin-bottom:4px}
+  #iosTip button{margin-top:10px;border:0;border-radius:999px;background:var(--ink);color:#fff;font-family:var(--font-display);
+    font-weight:700;font-size:15px;padding:8px 16px;cursor:pointer}
+  #iosTip[hidden]{display:none}
+  .fsbtn{display:block;margin:10px auto 0;border:0;background:none;color:var(--ink);font-family:var(--font-display);font-weight:700;
+    font-size:15px;text-decoration:underline;text-underline-offset:3px;cursor:pointer;padding:6px 10px}
   #toast{position:absolute;left:50%;top:calc(env(safe-area-inset-top,0px) + 64px);transform:translateX(-50%) translateY(-8px);
     background:var(--ink);color:#fff;font-family:var(--font-display);font-weight:700;font-size:15px;padding:8px 14px;border-radius:12px;
     opacity:0;transition:opacity .25s,transform .25s;pointer-events:none;max-width:calc(100% - 32px);text-align:center}
@@ -71,6 +95,15 @@
   <div id="banner" class="pill">🎂 Analua, 10 anos</div>
   <div id="stars" class="pill">⭐ 0/10</div>
   <button id="mute" type="button" aria-label="Som" aria-pressed="false">🔊</button>
+  <button id="fs" type="button" aria-label="Tela inteira" aria-pressed="false" title="Tela inteira">
+    <svg class="ico-in" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+    <svg class="ico-out" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>
+  </button>
+  <div id="iosTip" role="dialog" aria-label="Como jogar em tela inteira no iPhone" hidden>
+    <b>Tela inteira no iPhone</b>
+    O Safari do iPhone não deixa o site esconder a barra. Toque em <b style="display:inline;font-size:inherit">Compartilhar</b> (o quadrado com a seta) e depois em <b style="display:inline;font-size:inherit">Adicionar à Tela de Início</b>. Abrindo pelo ícone, o jogo fica em tela cheia.
+    <br><button type="button" id="iosTipOk">Entendi</button>
+  </div>
   <div id="toast"></div>
   <div id="joy"><div id="knob"></div></div>
   <button id="jump" type="button" aria-label="Pular">PULAR</button>
@@ -1094,7 +1127,7 @@ document.getElementById('winFoot').textContent = RECADO + ' ♥';
 
 let started = false;
 const startEl = document.getElementById('start'), winEl = document.getElementById('win');
-function startGame(){ started = true; startEl.hidden = true; toast('Encontre as ' + TOTAL_ESTRELAS + ' estrelas ⭐', 2200); }
+function startGame(){ started = true; startEl.hidden = true; if (FS.touch && !FS.isOn() && !FS.standalone) FS.enter(); toast('Encontre as ' + TOTAL_ESTRELAS + ' estrelas ⭐', 2200); }
 document.getElementById('play').addEventListener('click', startGame);
 document.getElementById('keep').addEventListener('click', () => { winEl.hidden = true; });
 
@@ -1139,6 +1172,38 @@ function resize(){
   }
 }
 addEventListener('resize', resize); resize();
+
+/* ===================== TELA INTEIRA ===================== */
+const FS = (() => {
+  const root = document.documentElement, btn = document.getElementById('fs'), tip = document.getElementById('iosTip');
+  const touch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
+  const standalone = matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches || navigator.standalone === true;
+  const canFS = !!(root.requestFullscreen || root.webkitRequestFullscreen) && (document.fullscreenEnabled !== false || document.webkitFullscreenEnabled);
+  const isOn = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+  function enter(){
+    if (!canFS){ tip.hidden = false; return; }
+    try {
+      const p = root.requestFullscreen ? root.requestFullscreen({ navigationUI:'hide' }) : root.webkitRequestFullscreen();
+      if (p && p.catch) p.catch(() => {});
+    } catch(e){}
+  }
+  function exit(){ try { (document.exitFullscreen || document.webkitExitFullscreen).call(document); } catch(e){} }
+  function sync(){
+    const on = isOn(); btn.setAttribute('aria-pressed', String(on));
+    btn.setAttribute('aria-label', on ? 'Sair da tela inteira' : 'Tela inteira'); btn.title = btn.getAttribute('aria-label');
+    setTimeout(resize, 60); setTimeout(resize, 350);
+  }
+  if (standalone) btn.hidden = true;
+  btn.addEventListener('click', e => { e.stopPropagation(); isOn() ? exit() : enter(); });
+  btn.addEventListener('pointerdown', e => e.stopPropagation());
+  btn.addEventListener('touchstart', e => e.stopPropagation(), { passive:true });
+  document.getElementById('iosTipOk').addEventListener('click', e => { e.stopPropagation(); tip.hidden = true; });
+  tip.addEventListener('pointerdown', e => e.stopPropagation());
+  ['fullscreenchange','webkitfullscreenchange'].forEach(ev => document.addEventListener(ev, sync));
+  addEventListener('orientationchange', () => setTimeout(resize, 300));
+  if (window.visualViewport) visualViewport.addEventListener('resize', resize);
+  return { enter, exit, isOn, touch, standalone, canFS };
+})();
 
 function frameLoop(now){
   requestAnimationFrame(frameLoop);
